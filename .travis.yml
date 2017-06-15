@@ -96,8 +96,8 @@ before_install:
 # Install packages
 install:
   - conda create --yes --quiet -n statsmodels-test ${PKGS} ${OPTIONAL} nose pip pyyaml setuptools
-  - pip install --install-option="--no-cython-compile" https://github.com/cython/cython/archive/master.zip
   - source activate statsmodels-test
+  - pip install --install-option="--no-cython-compile" https://github.com/cython/cython/archive/master.zip
   - if [ ${COVERAGE} = true ]; then pip install coverage coveralls; fi
   - python setup.py install
 
