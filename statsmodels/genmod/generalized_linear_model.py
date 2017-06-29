@@ -554,7 +554,7 @@ class GLM(base.LikelihoodModel):
             scale = self.estimate_scale(mu)
 
         eim_factor = 1 / (self.family.link.deriv(mu)**2 *
-                            self.family.variance(mu))
+                          self.family.variance(mu))
         eim_factor *= self.iweights * self.n_trials
 
         if not observed:
@@ -584,8 +584,7 @@ class GLM(base.LikelihoodModel):
 
         return oim_factor
 
-
-    def hessian(self, params, scale=None, observed=True):
+    def hessian(self, params, scale=None, observed=None):
         """Hessian, second derivative of loglikelihood function
 
         Parameters
@@ -597,14 +596,19 @@ class GLM(base.LikelihoodModel):
             Default scale is defined by `self.scaletype` and set in fit.
             If scale is not None, then it is used as a fixed scale.
         observed : bool
-            If True, then the observed Hessian is returned. If false then the
-            expected information matrix is returned.
+            If True, then the observed Hessian is returned (default).
+            If false then the expected information matrix is returned.
 
         Returns
         -------
         hessian : ndarray
             Hessian, i.e. observed information, or expected information matrix.
         """
+        if observed is None:
+            if hasattr(self, '_optim_hessian') and (self._optim_hessian == 'eim'):
+                observed = False
+            else:
+                observed = True
 
         factor = self.hessian_factor(params, scale=scale, observed=observed)
         hess = -np.dot(self.exog.T * factor, self.exog)
@@ -870,16 +874,19 @@ class GLM(base.LikelihoodModel):
         exog : array-like
             The predictor variable matrix.
 
-        Returns a frozen random number generator object.  Use the
-        ``rvs`` method to generate random values.
+        Returns
+        -------
+        gen
+            Frozen random number generator object.  Use the ``rvs`` method to
+            generate random values.
 
         Notes
         -----
-        Due to the behavior of ``scipy.stats.distributions objects``,
-        the returned random number generator must be called with
-        ``gen.rvs(n)`` where ``n`` is the number of observations in
-        the data set used to fit the model.  If any other value is
-        used for ``n``, misleading results will be produced.
+        Due to the behavior of ``scipy.stats.distributions objects``, the
+        returned random number generator must be called with ``gen.rvs(n)``
+        where ``n`` is the number of observations in the data set used
+        to fit the model.  If any other value is used for ``n``, misleading
+        results will be produced.
         """
 
         fit = self.predict(params, exog, exposure, offset, linear=False)
@@ -973,6 +980,14 @@ class GLM(base.LikelihoodModel):
             :math:`rtol * prior + atol > abs(current - prior)`
         tol_criterion : str, optional
             Defaults to ``'deviance'``. Can optionally be ``'params'``.
+
+        If a scipy optimizer is used, the following additional parameter is
+        available:
+
+        optim_hessian : {'eim', 'oim'}, optional
+            When 'oim', the default, the observed Hessian is used in fitting.
+            'eim' is the expected Hessian. This may provide more stable fits,
+            but adds assumption that the Hessian is correctly specified.
         """
         self.scaletype = scale
 
@@ -981,7 +996,8 @@ class GLM(base.LikelihoodModel):
                                   tol=tol, scale=scale, cov_type=cov_type,
                                   cov_kwds=cov_kwds, use_t=use_t, **kwargs)
         else:
-            return self._fit_gradient(start_params=start_params,
+            self._optim_hessian = kwargs.get('optim_hessian')
+            fit_ = self._fit_gradient(start_params=start_params,
                                       method=method,
                                       maxiter=maxiter,
                                       tol=tol, scale=scale,
@@ -990,6 +1006,8 @@ class GLM(base.LikelihoodModel):
                                       cov_kwds=cov_kwds, use_t=use_t,
                                       max_start_irls=max_start_irls,
                                       **kwargs)
+            self._optim_hessian = None
+            return fit_
 
     def _fit_gradient(self, start_params=None, method="newton",
                       maxiter=100, tol=1e-8, full_output=True,
