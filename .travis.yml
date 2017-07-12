@@ -93,7 +93,7 @@ before_install:
   - if [ ${USEMPL} = true ]; then PKGS="${PKGS} matplotlib"; if [ ${MATPLOTLIB} ]; then PKGS="${PKGS}=${MATPLOTLIB}"; fi; fi
   - conda create --yes --quiet -n statsmodels-test ${PKGS} ${OPTIONAL} nose pip pyyaml setuptools
   - source activate statsmodels-test
-  - pip install --install-option="--no-cython-compile" https://github.com/cython/cython/archive/a0f44623091d4da88e811ccde804693e3519583e.zip
+  - pip install --install-option="--no-cython-compile" https://github.com/cython/cython/archive/c824a3822c8b37dc49e23d9ed82036a5565075c1.zip
   - if [ ${COVERAGE} = true ]; then pip install coverage coveralls; fi
   - if [ ${DOCBUILD} = true ]; then bash tools/ci_docbuild_install.sh; fi;
 
