@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Dynamic factor model
 
@@ -136,7 +137,7 @@ class DynamicFactor(MLEModel):
 
     References
     ----------
-    .. [1] Lutkepohl, Helmut. 2007.
+    .. [*] Lütkepohl, Helmut. 2007.
        New Introduction to Multiple Time Series Analysis.
        Berlin: Springer.
 
@@ -424,15 +425,9 @@ class DynamicFactor(MLEModel):
         idx = idx[:, np.lexsort((idx[1], idx[0]))]
         self._idx_error_transition = np.s_['transition', idx[0], idx[1]]
 
-    def filter(self, params, **kwargs):
-        kwargs.setdefault('results_class', DynamicFactorResults)
-        kwargs.setdefault('results_wrapper_class', DynamicFactorResultsWrapper)
-        return super(DynamicFactor, self).filter(params, **kwargs)
-
-    def smooth(self, params, **kwargs):
-        kwargs.setdefault('results_class', DynamicFactorResults)
-        kwargs.setdefault('results_wrapper_class', DynamicFactorResultsWrapper)
-        return super(DynamicFactor, self).smooth(params, **kwargs)
+    @property
+    def _res_classes(self):
+        return {'fit': (DynamicFactorResults, DynamicFactorResultsWrapper)}
 
     @property
     def start_params(self):

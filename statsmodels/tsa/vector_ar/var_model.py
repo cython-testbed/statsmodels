@@ -1,9 +1,10 @@
+# -*- coding: utf-8 -*-
 """
 Vector Autoregression (VAR) processes
 
 References
 ----------
-Lutkepohl (2005) New Introduction to Multiple Time Series Analysis
+Lütkepohl (2005) New Introduction to Multiple Time Series Analysis
 """
 
 from __future__ import division, print_function
@@ -116,7 +117,7 @@ def var_acf(coefs, sig_u, nlags=None):
 
     Notes
     -----
-    Ref: Lutkepohl p.28-29
+    Ref: Lütkepohl p.28-29
 
     Returns
     -------
@@ -147,7 +148,7 @@ def _var_acf(coefs, sig_u):
 
     Notes
     -----
-    Lutkepohl (2005) p.29
+    Lütkepohl (2005) p.29
     """
     p, k, k2 = coefs.shape
     assert(k == k2)
@@ -217,7 +218,7 @@ def forecast(y, coefs, trend_coefs, steps, exog=None):
 
     Notes
     -----
-    Lutkepohl p. 37
+    Lütkepohl p. 37
 
     Also used by DynamicVAR class
     """
@@ -411,8 +412,11 @@ def test_normality(results, signif=0.05):
 
     References
     ----------
-    .. [1] Lutkepohl, H. 2005. *New Introduction to Multiple Time Series Analysis*. Springer.
-    .. [2] Kilian, L. & Demiroglu, U. (2000). *Residual-Based Tests for Normality in Autoregressions: Asymptotic Theory and Simulation Evidence*. Journal of Business & Economic Statistics
+    .. [1] Lütkepohl, H. 2005. *New Introduction to Multiple Time Series Analysis*. Springer.
+
+    .. [2] Kilian, L. & Demiroglu, U. (2000). "Residual-Based Tests for
+       Normality in Autoregressions: Asymptotic Theory and Simulation
+       Evidence." Journal of Business & Economic Statistics
     """
     resid_c = results.resid - results.resid.mean(0)
     sig = np.dot(resid_c.T, resid_c) / results.nobs
@@ -506,7 +510,7 @@ class VAR(tsbase.TimeSeriesModel):
 
     References
     ----------
-    Lutkepohl (2005) New Introduction to Multiple Time Series Analysis
+    Lütkepohl (2005) New Introduction to Multiple Time Series Analysis
     """
     def __init__(self, endog, exog=None, dates=None, freq=None,
                  missing='none'):
@@ -597,7 +601,7 @@ class VAR(tsbase.TimeSeriesModel):
 
         Notes
         -----
-        Lutkepohl pp. 146-153
+        Lütkepohl pp. 146-153
 
         Returns
         -------
@@ -681,7 +685,7 @@ class VAR(tsbase.TimeSeriesModel):
                 z[:, i] = (np.sqrt(z[:, i]) + lags)**2
 
         y_sample = endog[lags:]
-        # Lutkepohl p75, about 5x faster than stated formula
+        # Lütkepohl p75, about 5x faster than stated formula
         params = np.linalg.lstsq(z, y_sample)[0]
         resid = y_sample - np.dot(z, params)
 
@@ -809,7 +813,7 @@ class VARProcess(object):
     def mean(self):
         r"""Mean of stable process
 
-        Lutkepohl eq. 2.1.23
+        Lütkepohl eq. 2.1.23
 
         .. math:: \mu = (I - A_1 - \dots - A_p)^{-1} \alpha
         """
@@ -902,7 +906,7 @@ class VARProcess(object):
 
         Notes
         -----
-        Lutkepohl pp 37-38
+        Lütkepohl pp 37-38
         """
         if self.exog is None and exog_future is not None:
             raise ValueError("No exog in model, so no exog_future supported "
@@ -979,7 +983,7 @@ class VARProcess(object):
 
         Notes
         -----
-        Lutkepohl pp. 39-40
+        Lütkepohl pp. 39-40
 
         Returns
         -------
@@ -1205,7 +1209,7 @@ class VARResults(VARProcess):
         [params_for_deterministic_terms, A_1, ..., A_p] with the shape
         (K x (Kp + number_of_deterministic_terms))
         Adjusted to be an unbiased estimator
-        Ref: Lutkepohl p.74-75
+        Ref: Lütkepohl p.74-75
         """
         z = self.ys_lagged
         return np.kron(scipy.linalg.inv(np.dot(z.T, z)), self.sigma_u)
@@ -1222,7 +1226,7 @@ class VARResults(VARProcess):
 
         Notes
         -----
-        Lutkepohl Proposition 3.3
+        Lütkepohl Proposition 3.3
         """
 
         Ainv = scipy.linalg.inv(np.eye(self.neqs) - self.coefs.sum(0))
@@ -1337,7 +1341,7 @@ class VARResults(VARProcess):
         -----
         .. math:: \Sigma_{\hat y}(h) = \Sigma_y(h) + \Omega(h) / T
 
-        Ref: Lutkepohl pp. 96-97
+        Ref: Lütkepohl pp. 96-97
 
         Returns
         -------
@@ -1374,7 +1378,7 @@ class VARResults(VARProcess):
 
         Notes
         -----
-        Lutkepohl (2005) Appendix D
+        Lütkepohl (2005) Appendix D
 
         Returns
         -------
@@ -1575,10 +1579,7 @@ class VARResults(VARProcess):
 
     def test_causality(self, caused, causing=None, kind='f', signif=0.05):
         """
-        Test for Granger-causality as described in chapter 7.6.3 of [1]_.
-        Test H0: "`causing` does not Granger-cause the remaining variables of
-        the system" against  H1: "`causing` is Granger-causal for the
-        remaining variables".
+        Test Granger causality
 
         Parameters
         ----------
@@ -1611,13 +1612,18 @@ class VARResults(VARProcess):
         are equal to the number of equations in the VAR times degree of freedom
         of a single equation.
 
+        Test for Granger-causality as described in chapter 7.6.3 of [1]_.
+        Test H0: "`causing` does not Granger-cause the remaining variables of
+        the system" against  H1: "`causing` is Granger-causal for the
+        remaining variables".
+
         Returns
         -------
         results : CausalityTestResults
 
         References
         ----------
-        .. [1] Lutkepohl, H. 2005. *New Introduction to Multiple Time Series Analysis*. Springer.
+        .. [1] Lütkepohl, H. 2005. *New Introduction to Multiple Time Series Analysis*. Springer.
         """
         if not (0 < signif < 1):
             raise ValueError("signif has to be between 0 and 1")
@@ -1688,16 +1694,7 @@ class VARResults(VARProcess):
 
     def test_inst_causality(self, causing, signif=0.05):
         """
-        Test for instantaneous causality as described in chapters 3.6.3 and
-        7.6.4 of [1]_.
-        Test H0: "No instantaneous causality between caused and causing"
-        against H1: "Instantaneous causality between caused and causing
-        exists".
-        Note that instantaneous causality is a symmetric relation
-        (i.e. if causing is "instantaneously causing" caused, then also caused
-        is "instantaneously causing" causing), thus the naming of the
-        parameters (which is chosen to be in accordance with
-        test_granger_causality()) may be misleading.
+        Test for instantaneous causality
 
         Parameters
         ----------
@@ -1716,20 +1713,38 @@ class VARResults(VARProcess):
         -------
         results : dict
             A dict holding the test's results. The dict's keys are:
-            * "statistic" : float
-                The claculated test statistic.
-            * "crit_value" : float
-                The critical value of the \Chi^2-distribution.
-            * "pvalue" : float
-                The p-value corresponding to the test statistic.
-            * "df" : float
-                The degrees of freedom of the \Chi^2-distribution.
-            * "conclusion" : str {"reject", "fail to reject"}
-                 Whether H0 can be rejected or not.
-            * "signif" : float
+
+            "statistic" : float
+              The calculated test statistic.
+
+            "crit_value" : float
+              The critical value of the Chi^2-distribution.
+
+            "pvalue" : float
+              The p-value corresponding to the test statistic.
+
+            "df" : float
+              The degrees of freedom of the Chi^2-distribution.
+
+            "conclusion" : str {"reject", "fail to reject"}
+              Whether H0 can be rejected or not.
+
+            "signif" : float
+              Significance level
 
         Notes
         -----
+        Test for instantaneous causality as described in chapters 3.6.3 and
+        7.6.4 of [1]_.
+        Test H0: "No instantaneous causality between caused and causing"
+        against H1: "Instantaneous causality between caused and causing
+        exists".
+
+        Instantaneous causality is a symmetric relation (i.e. if causing is
+        "instantaneously causing" caused, then also caused is "instantaneously
+        causing" causing), thus the naming of the parameters (which is chosen
+        to be in accordance with test_granger_causality()) may be misleading.
+
         This method is not returning the same result as JMulTi. This is because
         the test is based on a VAR(k_ar) model in statsmodels (in accordance to
         pp. 104, 320-321 in [1]_) whereas JMulTi seems to be using a
@@ -1737,7 +1752,7 @@ class VARResults(VARProcess):
 
         References
         ----------
-        .. [1] Lutkepohl, H. 2005. *New Introduction to Multiple Time Series Analysis*. Springer.
+        .. [1] Lütkepohl, H. 2005. *New Introduction to Multiple Time Series Analysis*. Springer.
         """
         if not (0 < signif < 1):
             raise ValueError("signif has to be between 0 and 1")
@@ -1791,8 +1806,7 @@ class VARResults(VARProcess):
 
     def test_whiteness_new(self, nlags=10, signif=0.05, adjusted=False):
         """
-        Test the whiteness of the residuals using the Portmanteau test as
-        described in [1]_, chapter 4.4.3.
+        Residual whiteness tests using Portmanteau
 
         Parameters
         ----------
@@ -1804,9 +1818,14 @@ class VARResults(VARProcess):
         -------
         results : WhitenessTestResults
 
+        Notes
+        -----
+        Test the whiteness of the residuals using the Portmanteau test as
+        described in [1]_, chapter 4.4.3.
+
         References
         ----------
-        .. [1] Lutkepohl, H. 2005. *New Introduction to Multiple Time Series Analysis*. Springer.
+        .. [1] Lütkepohl, H. 2005. *New Introduction to Multiple Time Series Analysis*. Springer.
         """
         statistic = 0
         u = np.asarray(self.resid)
@@ -1922,7 +1941,7 @@ class VARResults(VARProcess):
     def fpe(self):
         """Final Prediction Error (FPE)
 
-        Lutkepohl p. 147, see info_criteria
+        Lütkepohl p. 147, see info_criteria
         """
         return self.info_criteria['fpe']
 

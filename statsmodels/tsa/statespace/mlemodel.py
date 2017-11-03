@@ -482,6 +482,29 @@ class MLEModel(tsbase.TimeSeriesModel):
 
             return res
 
+    @property
+    def _res_classes(self):
+        return {'fit': (MLEResults, MLEResultsWrapper)}
+
+    def _wrap_results(self, params, result, return_raw, cov_type=None,
+                      cov_kwds=None, results_class=None, wrapper_class=None):
+        if not return_raw:
+            # Wrap in a results object
+            result_kwargs = {}
+            if cov_type is not None:
+                result_kwargs['cov_type'] = cov_type
+            if cov_kwds is not None:
+                result_kwargs['cov_kwds'] = cov_kwds
+
+            if results_class is None:
+                results_class = self._res_classes['fit'][0]
+            if wrapper_class is None:
+                wrapper_class = self._res_classes['fit'][1]
+
+            res = results_class(self, params, result, **result_kwargs)
+            result = wrapper_class(res)
+        return result
+
     def filter(self, params, transformed=True, complex_step=False,
                cov_type=None, cov_kwds=None, return_ssm=False,
                results_class=None, results_wrapper_class=None, **kwargs):
@@ -524,23 +547,9 @@ class MLEModel(tsbase.TimeSeriesModel):
         result = self.ssm.filter(complex_step=complex_step, **kwargs)
 
         # Wrap in a results object
-        if not return_ssm:
-            result_kwargs = {}
-            if cov_type is not None:
-                result_kwargs['cov_type'] = cov_type
-            if cov_kwds is not None:
-                result_kwargs['cov_kwds'] = cov_kwds
-
-            if results_class is None:
-                results_class = MLEResults
-            if results_wrapper_class is None:
-                results_wrapper_class = MLEResultsWrapper
-
-            result = results_wrapper_class(
-                results_class(self, params, result, **result_kwargs)
-            )
-
-        return result
+        return self._wrap_results(params, result, return_ssm, cov_type,
+                                  cov_kwds, results_class,
+                                  results_wrapper_class)
 
     def smooth(self, params, transformed=True, complex_step=False,
                cov_type=None, cov_kwds=None, return_ssm=False,
@@ -584,23 +593,9 @@ class MLEModel(tsbase.TimeSeriesModel):
         result = self.ssm.smooth(complex_step=complex_step, **kwargs)
 
         # Wrap in a results object
-        if not return_ssm:
-            result_kwargs = {}
-            if cov_type is not None:
-                result_kwargs['cov_type'] = cov_type
-            if cov_kwds is not None:
-                result_kwargs['cov_kwds'] = cov_kwds
-
-            if results_class is None:
-                results_class = MLEResults
-            if results_wrapper_class is None:
-                results_wrapper_class = MLEResultsWrapper
-
-            result = results_wrapper_class(
-                results_class(self, params, result, **result_kwargs)
-            )
-
-        return result
+        return self._wrap_results(params, result, return_ssm, cov_type,
+                                  cov_kwds, results_class,
+                                  results_wrapper_class)
 
     _loglike_param_names = ['transformed', 'complex_step']
     _loglike_param_defaults = [True, False]
@@ -1004,9 +999,10 @@ class MLEModel(tsbase.TimeSeriesModel):
         partials = np.zeros((self.nobs, n))
         k_endog = self.k_endog
         for t in range(self.nobs):
-            for i in range(n):
-                inv_forecasts_error_cov = np.linalg.inv(
+            inv_forecasts_error_cov = np.linalg.inv(
                     res.forecasts_error_cov[:, :, t])
+
+            for i in range(n):
                 partials[t, i] += np.trace(np.dot(
                     np.dot(inv_forecasts_error_cov,
                            partials_forecasts_error_cov[:, :, t, i]),
@@ -1208,10 +1204,10 @@ class MLEModel(tsbase.TimeSeriesModel):
                 approx_complex_step=approx_complex_step,
                 approx_centered=approx_centered, **kwargs)
         elif method == 'approx' and approx_complex_step:
-            return self._hessian_complex_step(
+            hessian = self._hessian_complex_step(
                 params, transformed=transformed, **kwargs)
         elif method == 'approx':
-            return self._hessian_finite_difference(
+            hessian = self._hessian_finite_difference(
                 params, transformed=transformed,
                 approx_centered=approx_centered, **kwargs)
         else:
@@ -1571,7 +1567,7 @@ class MLEResults(tsbase.TimeSeriesModelResults):
 
         # Handle covariance matrix calculation
         if cov_kwds is None:
-                cov_kwds = {}
+            cov_kwds = {}
         self._cov_approx_complex_step = (
             cov_kwds.pop('approx_complex_step', True))
         self._cov_approx_centered = cov_kwds.pop('approx_centered', False)
@@ -1678,12 +1674,12 @@ class MLEResults(tsbase.TimeSeriesModelResults):
             approx_type_str = 'centered finite differences'
         else:
             approx_type_str = 'finite differences'
+
         k_params = len(self.params)
         if k_params == 0:
             res.cov_params_default = np.zeros((0, 0))
             res._rank = 0
-            res.cov_kwds['description'] = (
-                'No parameters estimated.')
+            res.cov_kwds['description'] = 'No parameters estimated.'
         elif cov_type == 'custom':
             res.cov_type = kwargs['custom_cov_type']
             res.cov_params_default = kwargs['custom_cov_params']
@@ -1692,8 +1688,7 @@ class MLEResults(tsbase.TimeSeriesModelResults):
         elif cov_type == 'none':
             res.cov_params_default = np.zeros((k_params, k_params)) * np.nan
             res._rank = np.nan
-            res.cov_kwds['description'] = (
-                'Covariance matrix not calculated.')
+            res.cov_kwds['description'] = 'Covariance matrix not calculated.'
         elif self.cov_type == 'approx':
             res.cov_params_default = res.cov_params_approx
             res.cov_kwds['description'] = (
@@ -1708,8 +1703,7 @@ class MLEResults(tsbase.TimeSeriesModelResults):
             res.cov_params_default = res.cov_params_opg
             res.cov_kwds['description'] = (
                 'Covariance matrix calculated using the outer product of'
-                ' gradients (%s).' % approx_type_str
-            )
+                ' gradients (%s).' % approx_type_str)
         elif self.cov_type == 'robust' or self.cov_type == 'robust_oim':
             res.cov_params_default = res.cov_params_robust_oim
             res.cov_kwds['description'] = (
@@ -1718,7 +1712,7 @@ class MLEResults(tsbase.TimeSeriesModelResults):
                 ' observed information matrix (%s) described in'
                 ' Harvey (1989).' % approx_type_str)
         elif self.cov_type == 'robust_approx':
-            res.cov_params_default = res.cov_params_robust
+            res.cov_params_default = res.cov_params_robust_approx
             res.cov_kwds['description'] = (
                 'Quasi-maximum likelihood covariance matrix used for'
                 ' robustness to some misspecifications; calculated using'
@@ -1935,10 +1929,8 @@ class MLEResults(tsbase.TimeSeriesModelResults):
 
         References
         ----------
-        .. [1] Lütkepohl, Helmut. 2007.
-           New Introduction to Multiple Time Series Analysis.
-           Berlin: Springer.
-
+        .. [*] Lütkepohl, Helmut. 2007. *New Introduction to Multiple Time*
+           *Series Analysis.* Berlin: Springer.
         """
         criteria = criteria.lower()
         method = method.lower()
@@ -1947,7 +1939,7 @@ class MLEResults(tsbase.TimeSeriesModelResults):
             out = getattr(self, criteria)
         elif method == 'lutkepohl':
             if self.filter_results.state_cov.shape[-1] > 1:
-                raise ValueError('Cannot compute Lutkepohl statistics for'
+                raise ValueError('Cannot compute Lütkepohl statistics for'
                                  ' models with time-varying state covariance'
                                  ' matrix.')
 
@@ -2173,10 +2165,8 @@ class MLEResults(tsbase.TimeSeriesModelResults):
 
         References
         ----------
-        .. [1] Harvey, Andrew C. 1990.
-           Forecasting, Structural Time Series Models and the Kalman Filter.
-           Cambridge University Press.
-
+        .. [1] Harvey, Andrew C. 1990. *Forecasting, Structural Time Series*
+               *Models and the Kalman Filter.* Cambridge University Press.
         """
         if method is None:
             method = 'breakvar'

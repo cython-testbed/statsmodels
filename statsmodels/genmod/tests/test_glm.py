@@ -859,6 +859,7 @@ def test_formula_missing_exposure():
     assert_(type(mod.exposure) is np.ndarray, msg='Exposure is not ndarray')
 
     exposure = pd.Series(np.random.uniform(size=5))
+    df.loc[3, 'Bar'] = 4   # nan not relevant for Valueerror for shape mismatch
     assert_raises(ValueError, smf.glm, "Foo ~ Bar", data=df,
                   exposure=exposure, family=family)
     assert_raises(ValueError, GLM, df.Foo, df[['constant', 'Bar']],
@@ -1170,6 +1171,35 @@ def test_gradient_irls_eim():
                                     atol=5e-5)
 
 
+def test_glm_irls_method():
+    nobs, k_vars = 50, 4
+    np.random.seed(987126)
+    x = np.random.randn(nobs, k_vars - 1)
+    exog = add_constant(x, has_constant='add')
+    y = exog.sum(1) + np.random.randn(nobs)
+
+    mod = GLM(y, exog)
+    res1 = mod.fit()
+    res2 = mod.fit(wls_method='pinv', attach_wls=True)
+    res3 = mod.fit(wls_method='qr', attach_wls=True)
+    # fit_gradient does not attach mle_settings
+    res_g1 = mod.fit(start_params=res1.params, method='bfgs')
+
+    for r in [res1, res2, res3]:
+        assert_equal(r.mle_settings['optimizer'], 'IRLS')
+        assert_equal(r.method, 'IRLS')
+
+    assert_equal(res1.mle_settings['wls_method'], 'lstsq')
+    assert_equal(res2.mle_settings['wls_method'], 'pinv')
+    assert_equal(res3.mle_settings['wls_method'], 'qr')
+
+    assert_(hasattr(res2.results_wls.model, 'pinv_wexog'))
+    assert_(hasattr(res3.results_wls.model, 'exog_Q'))
+
+    # fit_gradient currently does not attach mle_settings
+    assert_equal(res_g1.method, 'bfgs')
+
+
 class CheckWtdDuplicationMixin(object):
     decimal_params = DECIMAL_4
 
@@ -1261,7 +1291,7 @@ class CheckWtdDuplicationMixin(object):
 
 
 class TestWtdGlmPoisson(CheckWtdDuplicationMixin):
-    
+
     @classmethod
     def setup_class(cls):
         '''
