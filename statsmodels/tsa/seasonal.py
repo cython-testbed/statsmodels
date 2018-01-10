@@ -34,12 +34,18 @@ def _extrapolate_trend(trend, npoints):
     k, n = np.linalg.lstsq(
         np.c_[np.arange(front, front_last), np.ones(front_last - front)],
         trend[front:front_last])[0]
-    trend[:front] = (np.arange(0, front) * np.c_[k] + np.c_[n]).T
+    extra = (np.arange(0, front) * np.c_[k] + np.c_[n]).T
+    if trend.ndim == 1:
+        extra = extra.squeeze()
+    trend[:front] = extra
 
     k, n = np.linalg.lstsq(
         np.c_[np.arange(back_first, back), np.ones(back - back_first)],
         trend[back_first:back])[0]
-    trend[back + 1:] = (np.arange(back + 1, trend.shape[0]) * np.c_[k] + np.c_[n]).T
+    extra = (np.arange(back + 1, trend.shape[0]) * np.c_[k] + np.c_[n]).T
+    if trend.ndim == 1:
+        extra = extra.squeeze()
+    trend[back + 1:] = extra
 
     return trend
 
@@ -119,7 +125,7 @@ def seasonal_decompose(x, model="additive", filt=None, freq=None, two_sided=True
             freq = pfreq
         else:
             raise ValueError("You must specify a freq or x must be a "
-                             "pandas object with a timeseries index with"
+                             "pandas object with a timeseries index with "
                              "a freq not set to None")
 
     if filt is None:

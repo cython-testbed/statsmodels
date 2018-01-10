@@ -20,10 +20,33 @@ matrix:
   include:
   - python: 2.7
     env:
+    - PYTHON=3.6
+    - COVERAGE=true
+  - python: 2.7
+    env:
     - PYTHON=2.7
     - NUMPY=1.11
     - MATPLOTLIB=1.5
     - COVERAGE=true
+  - python: 2.7
+    env:
+    - PYTHON=3.5
+    - NUMPY=1.10
+    - SCIPY=0.17
+    - PANDAS=0.18
+    - MATPLOTLIB=1.5
+  - python: 2.7
+    env:
+    - PYTHON=3.4
+    - NUMPY=1.10
+    - SCIPY=0.16
+    - PANDAS=0.16
+    - MATPLOTLIB=1.4
+    - OPTIONAL="libgfortran=1.0"
+  - python: 2.7
+    env:
+    - PYTHON=3.6
+    - DOCBUILD=true
   - python: 2.7
     env:
     - PYTHON=2.7
@@ -39,29 +62,6 @@ matrix:
     - SCIPY=0.14
     - MATPLOTLIB=1.4
     - PANDAS=0.14
-  - python: 2.7
-    env:
-    - PYTHON=3.4
-    - NUMPY=1.10
-    - SCIPY=0.16
-    - PANDAS=0.16
-    - MATPLOTLIB=1.4
-    - OPTIONAL="libgfortran=1.0"
-  - python: 2.7
-    env:
-    - PYTHON=3.5
-    - NUMPY=1.10
-    - SCIPY=0.17
-    - PANDAS=0.18
-    - MATPLOTLIB=1.5
-  - python: 2.7
-    env:
-    - PYTHON=3.6
-    - COVERAGE=true
-  - python: 2.7
-    env:
-    - PYTHON=3.6
-    - DOCBUILD=true
 
 notifications:
   email:
@@ -96,7 +96,7 @@ before_install:
   - if [ ${USEMPL} = true ]; then PKGS="${PKGS} matplotlib"; if [ ${MATPLOTLIB} ]; then PKGS="${PKGS}=${MATPLOTLIB}"; fi; fi
   - if [ ${COVERAGE} = true ]; then export COVERAGE_OPTS=" --cov-config=.travis_coveragerc --cov=statsmodels "; else export COVERAGE_OPTS=""; fi
   - echo conda create --yes --quiet -n statsmodels-test ${PKGS} ${OPTIONAL} pyyaml
-  - conda create --yes --quiet -n statsmodels-test ${PKGS} ${OPTIONAL} pyyaml
+  - conda create --yes --quiet -n statsmodels-test ${PKGS} ${OPTIONAL} pyyaml joblib
   - source activate statsmodels-test
   - if [ ${COVERAGE} = true ]; then pip install coverage coveralls; fi
   - pip install --install-option="--no-cython-compile" https://github.com/cython/cython/archive/177dbe83d5c7551cb2cad790cb5a963b54cf19ef.zip
@@ -118,8 +118,7 @@ script:
   # docbuild and exit, if required
   - if [ ${DOCBUILD} = true ]; then cd ${SRCDIR}/docs; bash ${SRCDIR}/tools/ci_docbuild.sh; exit 0; fi;
   # Run tests
-  # Remove xdist (-n 2) until warning reporting is working
-  - echo pytest ${COVERAGE_OPTS} statsmodels --skip-examples
+  - echo pytest -n 2 ${COVERAGE_OPTS} statsmodels --skip-examples
   - pytest ${COVERAGE_OPTS} statsmodels --skip-examples
 
 after_success:
