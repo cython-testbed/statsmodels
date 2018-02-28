@@ -104,7 +104,9 @@ class CheckWeight(object):
         assert_allclose(res1.resid_working, resid_all['resid_working'], atol= 1e-6, rtol=2e-6)
         if resid_all.get('resid_anscombe') is None:
             return None
-        assert_allclose(res1.resid_anscombe, resid_all['resid_anscombe'], atol= 1e-6, rtol=2e-6)
+        # Stata doesn't use var_weights in anscombe residuals, it seems. 
+        # Adjust residuals to match our approach.
+        assert_allclose(res1.resid_anscombe, resid_all['resid_anscombe'] * np.sqrt(res1._var_weights), atol= 1e-6, rtol=2e-6)
 
     def test_compare_optimizers(self):
         res1 = self.res1
@@ -178,7 +180,6 @@ class TestGlmPoissonAwNr(CheckWeight):
 
 
 # prob_weights fail with HC, not properly implemented yet
-@pytest.mark.xfail
 class TestGlmPoissonPwNr(CheckWeight):
     @classmethod
     def setup_class(cls):
@@ -194,6 +195,14 @@ class TestGlmPoissonPwNr(CheckWeight):
         # compare with discrete, start close to save time
         #modd = discrete.Poisson(cpunish_data.endog, cpunish_data.exog)
         cls.res2 = res_stata.results_poisson_pweight_nonrobust
+
+    @pytest.mark.xfail(reason='Known to fail')
+    def test_basic(cls):
+        super(cls, TestGlmPoissonPwNr).test_basic(cls)
+
+    @pytest.mark.xfail(reason='Known to fail')
+    def test_compare_optimizers(cls):
+        super(cls, TestGlmPoissonPwNr).test_compare_optimizers(cls)
 
 
 class TestGlmPoissonFwHC(CheckWeight):
@@ -867,3 +876,33 @@ def test_incompatible_input():
                   freq_weights=[weights, weights])
     assert_raises(ValueError, GLM, endog, exog, family=family,
                   var_weights=[weights, weights])
+
+
+def test_poisson_residuals():
+    nobs, k_exog = 100, 5
+    np.random.seed(987125)
+    x = np.random.randn(nobs, k_exog - 1)
+    x = add_constant(x)
+
+    y_true = x.sum(1) / 2
+    y = y_true + 2 * np.random.randn(nobs)
+    exposure = 1 + np.arange(nobs) // 4
+
+    yp = np.random.poisson(np.exp(y_true) * exposure)
+    yp[10:15] += 10
+
+    fam = sm.families.Poisson()
+    mod_poi_e = GLM(yp, x, family=fam, exposure=exposure)
+    res_poi_e = mod_poi_e.fit()
+
+    mod_poi_w = GLM(yp / exposure, x, family=fam, var_weights=exposure)
+    res_poi_w = mod_poi_w.fit()
+
+    assert_allclose(res_poi_e.resid_response / exposure,
+                    res_poi_w.resid_response)
+    assert_allclose(res_poi_e.resid_pearson, res_poi_w.resid_pearson)
+    assert_allclose(res_poi_e.resid_deviance, res_poi_w.resid_deviance)
+    assert_allclose(res_poi_e.resid_anscombe, res_poi_w.resid_anscombe)
+    assert_allclose(res_poi_e.resid_anscombe_unscaled,
+                    res_poi_w.resid_anscombe)
+
