@@ -11,13 +11,13 @@ import warnings
 import numpy as np
 import pandas as pd
 import os
+import sys
 from scipy.signal import lfilter
 
 from statsmodels.tsa.statespace import (sarimax, structural, varmax,
                                         dynamic_factor)
-from statsmodels.tsa.statespace.tools import compatibility_mode
-from numpy.testing import (assert_allclose, assert_almost_equal, assert_equal,
-                           assert_raises)
+from numpy.testing import (assert_allclose, assert_almost_equal, assert_equal)
+import pytest
 
 
 def test_arma_lfilter():
@@ -424,7 +424,8 @@ def test_varmax():
     state = np.r_[1, 1]
     for i in range(nobs):
         desired[i] = state
-        state = exog[i] * [5, -2] + np.dot(transition, state)
+        if i < nobs - 1:
+            state = exog[i + 1] * [5, -2] + np.dot(transition, state)
     assert_allclose(actual, desired)
 
     # VMA(1)

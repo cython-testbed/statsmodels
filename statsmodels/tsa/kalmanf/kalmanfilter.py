@@ -17,7 +17,7 @@ This file follows Hamilton's notation pretty closely.
 The ARMA Model class follows Durbin and Koopman notation.
 Harvey uses Durbin and Koopman notation.
 """
-#Anderson and Moore `Optimal Filtering` provides a more efficient algorithm
+# Anderson and Moore `Optimal Filtering` provides a more efficient algorithm
 # namely the information filter
 # if the number of series is much greater than the number of states
 # e.g., with a DSGE model.  See also
@@ -27,15 +27,17 @@ Harvey uses Durbin and Koopman notation.
 from __future__ import print_function
 from statsmodels.compat.python import lzip, lmap, callable, range
 import numpy as np
-from numpy import dot, identity, kron, log, zeros, pi, exp, eye, issubdtype, ones
+from numpy import dot, identity, kron, log, zeros, pi, eye, issubdtype, ones
 from numpy.linalg import inv, pinv
+from scipy import optimize
 from statsmodels.tools.tools import chain_dot
 from . import kalman_loglike
 
-#Fast filtering and smoothing for multivariate state space models
+# Fast filtering and smoothing for multivariate state space models
 # and The Riksbank -- Strid and Walentin (2008)
 # Block Kalman filtering for large-scale DSGE models
 # but this is obviously macro model specific
+
 
 def _init_diffuse(T,R):
     m = T.shape[1] # number of states
@@ -46,6 +48,7 @@ def _init_diffuse(T,R):
 
 def kalmansmooth(F, A, H, Q, R, y, X, xi10):
     pass
+
 
 def kalmanfilter(F, A, H, Q, R, y, X, xi10, ntrain, history=False):
     """
@@ -335,7 +338,6 @@ class StateSpaceModel(object):
         else:
             raise ValueError("No multivariate filter written yet")
 
-
     def _updateloglike(self, params, xi10, ntrain, penalty, upperbounds, lowerbounds,
             F,A,H,Q,R, history):
         """
@@ -393,7 +395,7 @@ class StateSpaceModel(object):
 #        xi10 = self.xi10
 #        y = self.endog
 #        ntrain = self.ntrain
- #       loglike = kalmanfilter(F,H,y,xi10,Q,ntrain)
+#        loglike = kalmanfilter(F,H,y,xi10,Q,ntrain)
 
     def fit_kalman(self, start_params, xi10, ntrain=1, F=None, A=None, H=None,
             Q=None,
@@ -444,6 +446,7 @@ class StateSpaceModel(object):
         self.cov_params = cov_params # how to interpret this?
         self.warnflag = warnflag
 
+
 def updatematrices(params, y, xi10, ntrain, penalty, upperbound, lowerbound):
     """
     TODO: change API, update names
@@ -465,6 +468,7 @@ def updatematrices(params, y, xi10, ntrain, penalty, upperbound, lowerbound):
     loglike = loglike + penalty*np.sum((paramsorig-params)**2)
     return loglike
 
+
 class KalmanFilter(object):
     """
     Kalman Filter code intended for use with the ARMA model.
@@ -485,7 +489,7 @@ class KalmanFilter(object):
     """
 
     @classmethod
-    def T(cls, params, r, k, p): # F in Hamilton
+    def T(cls, params, r, k, p):  # F in Hamilton
         """
         The coefficient matrix for the state vector in the state equation.
 
@@ -510,15 +514,16 @@ class KalmanFilter(object):
         # allows for complex-step derivative
         params_padded = zeros(r, dtype=params.dtype,
                               order="F")
-                        # handle zero coefficients if necessary
-        #NOTE: squeeze added for cg optimizer
-        params_padded[:p] = params[k:p+k]
-        arr[:,0] = params_padded   # first p params are AR coeffs w/ short params
-        arr[:-1,1:] = eye(r-1)
+        # handle zero coefficients if necessary
+        # NOTE: squeeze added for cg optimizer
+        params_padded[:p] = params[k:p + k]
+        arr[:, 0] = params_padded
+        # first p params are AR coeffs w/ short params
+        arr[:-1, 1:] = eye(r - 1)
         return arr
 
     @classmethod
-    def R(cls, params, r, k, q, p): # R is H in Hamilton
+    def R(cls, params, r, k, q, p):  # R is H in Hamilton
         """
         The coefficient matrix for the state vector in the observation equation.
 
@@ -542,9 +547,9 @@ class KalmanFilter(object):
         Durbin and Koopman Section 3.7.
         """
         arr = zeros((r, 1), dtype=params.dtype, order="F")
-                               # this allows zero coefficients
-                               # dtype allows for compl. der.
-        arr[1:q+1,:] = params[p+k:p+k+q][:,None]
+        # this allows zero coefficients
+        # dtype allows for compl. der.
+        arr[1:q + 1, :] = params[p + k:p + k + q][: ,None]
         arr[0] = 1.0
         return arr
 
@@ -564,8 +569,8 @@ class KalmanFilter(object):
         Currently only returns a 1 x r vector [1,0,0,...0].  Will need to
         be generalized when the Kalman Filter becomes more flexible.
         """
-        arr = zeros((1,r), order="F")
-        arr[:,0] = 1.
+        arr = zeros((1, r), order="F")
+        arr[:, 0] = 1.
         return arr
 
     @classmethod
@@ -575,11 +580,11 @@ class KalmanFilter(object):
         Returns just the errors of the Kalman Filter
         """
         if issubdtype(paramsdtype, np.float64):
-            return kalman_loglike.kalman_filter_double(y, k, k_ar, k_ma,
-                                k_lags, int(nobs), Z_mat, R_mat, T_mat)[0]
+            return kalman_loglike.kalman_filter_double(
+                y, k, k_ar, k_ma, k_lags, int(nobs), Z_mat, R_mat, T_mat)[0]
         elif issubdtype(paramsdtype, np.complex128):
-            return kalman_loglike.kalman_filter_complex(y, k, k_ar, k_ma,
-                                k_lags, int(nobs), Z_mat, R_mat, T_mat)[0]
+            return kalman_loglike.kalman_filter_complex(
+                y, k, k_ar, k_ma, k_lags, int(nobs), Z_mat, R_mat, T_mat)[0]
         else:
             raise TypeError("dtype %s is not supported "
                             "Please file a bug report" % paramsdtype)
@@ -608,11 +613,11 @@ class KalmanFilter(object):
 
         # system matrices
         Z_mat = cls.Z(k_lags)
-        m = Z_mat.shape[1] # r
+        m = Z_mat.shape[1]  # r
         R_mat = cls.R(newparams, k_lags, k, k_ma, k_ar)
         T_mat = cls.T(newparams, k_lags, k, k_ar)
         return (y, k, nobs, k_ar, k_ma, k_lags,
-               newparams, Z_mat, m, R_mat, T_mat, paramsdtype)
+                newparams, Z_mat, m, R_mat, T_mat, paramsdtype)
 
     @classmethod
     def loglike(cls, params, arma_model, set_sigma2=True):
@@ -638,20 +643,19 @@ class KalmanFilter(object):
         complex values being used to compute the numerical derivative. If
         available will use a Cython version of the Kalman Filter.
         """
-        #TODO: see section 3.4.6 in Harvey for computing the derivatives in the
+        # TODO: see section 3.4.6 in Harvey for computing the derivatives in the
         # recursion itself.
-        #TODO: this won't work for time-varying parameters
+        # TODO: this won't work for time-varying parameters
         (y, k, nobs, k_ar, k_ma, k_lags, newparams, Z_mat, m, R_mat, T_mat,
-                paramsdtype) = cls._init_kalman_state(params, arma_model)
+         paramsdtype) = cls._init_kalman_state(params, arma_model)
         if issubdtype(paramsdtype, np.float64):
-            loglike, sigma2 =  kalman_loglike.kalman_loglike_double(y, k,
-                                    k_ar, k_ma, k_lags, int(nobs), Z_mat,
-                                    R_mat, T_mat)
+            loglike, sigma2 =  kalman_loglike.kalman_loglike_double(
+                y, k, k_ar, k_ma, k_lags, int(nobs),
+                Z_mat, R_mat, T_mat)
         elif issubdtype(paramsdtype, np.complex128):
-            loglike, sigma2 =  kalman_loglike.kalman_loglike_complex(y, k,
-                                    k_ar, k_ma, k_lags, int(nobs),
-                                    Z_mat.astype(complex),
-                                    R_mat, T_mat)
+            loglike, sigma2 =  kalman_loglike.kalman_loglike_complex(
+                y, k, k_ar, k_ma, k_lags, int(nobs),
+                Z_mat.astype(complex), R_mat, T_mat)
         else:
             raise TypeError("This dtype %s is not supported "
                             " Please files a bug report." % paramsdtype)
@@ -721,7 +725,6 @@ if __name__ == "__main__":
     # xi0 can be replaced with a best guess and then
     # P0 is a positive definite matrix repr the confidence in the guess
     # larger diagonal elements signify less confidence
-
 
     # we also know that y1 = mu
     # and MSE(y1) = variance*(1+theta**2) = np.dot(np.dot(H.T,P0),H)
@@ -796,11 +799,12 @@ if __name__ == "__main__":
 #        gtol = 1e-8, epsilon=1e-10)
 #    array([ 0.83111567,  1.2695249 ,  0.61436685])
 
-
     F = lambda x : np.array([[x[0],0],[0,0]])
+
     def Q(x):
         cholQ = np.array([[x[1],0],[0,x[2]]])
         return np.dot(cholQ,cholQ.T)
+
     H = np.ones((2,1))
 #    ssm_model = StateSpaceModel(y)  # need to pass in Xi10!
 #    ssm_model.fit_kalman(start_params=params, xi10=xi10, F=F, Q=Q, H=H,
@@ -819,8 +823,6 @@ if __name__ == "__main__":
 #    np.testing.assert_almost_equal(ssm_model2.params, thetaunc, 4)
     # maybe add a line search check to make sure we didn't get stuck in a local
     # max for more complicated ssm?
-
-
 
 # Examples from Durbin and Koopman
     import zipfile

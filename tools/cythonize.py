@@ -24,7 +24,7 @@ developers) do not get the Cython/Tempita dependencies.
 
 Originally written by Dag Sverre Seljebotn, and copied here from:
 
-https://raw.github.com/dagss/private-scipy-refactor/cythonize/cythonize.py
+https://raw.githubusercontent.com/dagss/private-scipy-refactor/cythonize/cythonize.py
 
 Note: this script does not check any of the dependent C libraries; it only
 operates on the Cython .pyx files.
@@ -195,7 +195,7 @@ def find_process_files(root_dir):
                     toext = ".c"
                     with open(os.path.join(cur_dir, filename), 'rb') as f:
                         data = f.read()
-                        m = re.search(br"^\s*#\s*distutils:\s*language\s*=\s*c\+\+\s*$", data, re.I|re.M)
+                        m = re.search(br"^\s*#\s*distutils:\s*language\s*=\s*c\+\+\s*$", data, re.I | re.M)
                         if m:
                             toext = ".cxx"
                     fromfile = filename

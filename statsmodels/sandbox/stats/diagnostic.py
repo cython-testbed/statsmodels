@@ -289,7 +289,7 @@ def acorr_ljungbox(x, lags=None, boxpierce=False):
     lags = np.asarray(lags)
     maxlag = max(lags)
     acfx = acf(x, nlags=maxlag) # normalize by nobs not (nobs-nlags)
-                             # SS: unbiased=False is default now
+                                # SS: unbiased=False is default now
     acf2norm = acfx[1:maxlag+1]**2 / (nobs - np.arange(1,maxlag+1))
     qljungbox = nobs * (nobs+2) * np.cumsum(acf2norm)[lags-1]
     pval = stats.chi2.sf(qljungbox, lags)
@@ -1465,7 +1465,7 @@ class StatTestMC(object):
         does not do any plotting
         '''
         if self.mcres.ndim == 2:
-            if  not idx is None:
+            if idx is not None:
                 mcres = self.mcres[:,idx]
             else:
                 raise ValueError('currently only 1 statistic at a time')
@@ -1622,5 +1622,3 @@ if __name__ == '__main__':
 
     y = x.sum(1) + 10.*(1-0.5*(x[:,1]>10))*np.random.rand(nobs)
     print(HetGoldfeldQuandt().run(y,x, 1, alternative='dec'))
-
-

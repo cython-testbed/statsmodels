@@ -349,7 +349,7 @@ def approx_hess3(x, f, epsilon=None, args=(), kwargs={}):
             hess[i, j] = (f(*((x + ee[i, :] + ee[j, :],) + args), **kwargs)
                           - f(*((x + ee[i, :] - ee[j, :],) + args), **kwargs)
                           - (f(*((x - ee[i, :] + ee[j, :],) + args), **kwargs)
-                          - f(*((x - ee[i, :] - ee[j, :],) + args), **kwargs),)
+                          - f(*((x - ee[i, :] - ee[j, :],) + args), **kwargs))
                           )/(4.*hess[i, j])
             hess[j, i] = hess[i, j]
     return hess
@@ -370,7 +370,7 @@ if __name__ == '__main__': #pragma : no cover
     from scipy.optimize.optimize import approx_fhess_p
     import numpy as np
 
-    data = sm.datasets.spector.load()
+    data = sm.datasets.spector.load(as_pandas=False)
     data.exog = sm.add_constant(data.exog, prepend=False)
     mod = sm.Probit(data.endog, data.exog)
     res = mod.fit(method="newton")
@@ -429,18 +429,6 @@ if __name__ == '__main__': #pragma : no cover
     print(2*np.dot(x.T, x))
     jac2 = (jac+jacmin)/2.
     print(np.dot(jac2.T, jac2))
-
-    #he = approx_hess(xk,fun2,epsilon,*args)
-    print(approx_hess_old(xk,fun2,1e-3,args))
-    he = approx_hess_old(xk,fun2,None,args)
-    print('hessfd')
-    print(he)
-    print('epsilon =', None)
-    print(he[0] - 2*np.dot(x.T, x))
-
-    for eps in [1e-3,1e-4,1e-5,1e-6]:
-        print('eps =', eps)
-        print(approx_hess_old(xk,fun2,eps,args)[0] - 2*np.dot(x.T, x))
 
     hcs2 = approx_hess_cs(xk,fun2,args=args)
     print('hcs2')

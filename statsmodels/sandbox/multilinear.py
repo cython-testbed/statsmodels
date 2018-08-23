@@ -44,7 +44,7 @@ def _model2dataframe(model_endog, model_exog, model_type=OLS, **kwargs):
 
 
 def multiOLS(model, dataframe, column_list=None, method='fdr_bh',
-    alpha=0.05, subset=None, model_type=OLS, **kwargs):
+             alpha=0.05, subset=None, model_type=OLS, **kwargs):
     """apply a linear model to several endogenous variables on a dataframe
 
     Take a linear model definition via formula and a dataframe that will be
@@ -281,7 +281,7 @@ def multigroup(pvals, groups, exact=True, keep_all=True, alpha=0.05):
     Examples
     --------
     A toy example on a real dataset, the Guerry dataset from R
-    >>> url = "http://vincentarelbundock.github.com/"
+    >>> url = "https://raw.githubusercontent.com/vincentarelbundock/"
     >>> url = url + "Rdatasets/csv/HistData/Guerry.csv"
     >>> df = pd.read_csv(url, index_col='dept')
 

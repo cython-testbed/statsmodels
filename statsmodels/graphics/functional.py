@@ -2,11 +2,12 @@
 
 from statsmodels.multivariate.pca import PCA
 from statsmodels.nonparametric.kernel_density import KDEMultivariate
-from statsmodels.compat.python import combinations, range, zip
-from statsmodels.compat.collections import OrderedDict
+from statsmodels.compat.python import range, zip
 from statsmodels.graphics.utils import _import_mpl
+from collections import OrderedDict
+from itertools import combinations
 import numpy as np
-from scipy.misc import factorial
+from statsmodels.compat.scipy import factorial
 try:
     from scipy.optimize import differential_evolution
     have_de_optim = True
@@ -279,7 +280,7 @@ def hdrboxplot(data, ncomp=2, alpha=None, threshold=0.95, bw=None,
 
     >>> import matplotlib.pyplot as plt
     >>> import statsmodels.api as sm
-    >>> data = sm.datasets.elnino.load()
+    >>> data = sm.datasets.elnino.load(as_pandas=False)
 
     Create a functional boxplot.  We see that the years 1982-83 and 1997-98 are
     outliers; these are the years where El Nino (a climate pattern
@@ -310,9 +311,9 @@ def hdrboxplot(data, ncomp=2, alpha=None, threshold=0.95, bw=None,
 
     if labels is None:
         # For use with pandas, get the labels
-        if hasattr(data, 'index'): 
+        if hasattr(data, 'index'):
             labels = data.index
-        else: 
+        else:
             labels = np.arange(len(data))
 
     data = np.asarray(data)
@@ -559,7 +560,7 @@ def fboxplot(data, xdata=None, labels=None, depth=None, method='MBD',
 
     >>> import matplotlib.pyplot as plt
     >>> import statsmodels.api as sm
-    >>> data = sm.datasets.elnino.load()
+    >>> data = sm.datasets.elnino.load(as_pandas=False)
 
     Create a functional boxplot.  We see that the years 1982-83 and 1997-98 are
     outliers; these are the years where El Nino (a climate pattern
@@ -712,7 +713,7 @@ def rainbowplot(data, xdata=None, depth=None, method='MBD', ax=None,
 
     >>> import matplotlib.pyplot as plt
     >>> import statsmodels.api as sm
-    >>> data = sm.datasets.elnino.load()
+    >>> data = sm.datasets.elnino.load(as_pandas=False)
 
     Create a rainbow plot:
 

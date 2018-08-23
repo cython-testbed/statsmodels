@@ -145,21 +145,19 @@ the Newton-Raphson algorithm cannot be used for model fitting.
 
 import numpy as np
 import statsmodels.base.model as base
-from scipy.optimize import fmin_ncg, fmin_cg, fmin_bfgs, fmin
 from statsmodels.tools.decorators import cache_readonly
 from statsmodels.tools import data as data_tools
 from scipy.stats.distributions import norm
 from scipy import sparse
 import pandas as pd
 import patsy
-from statsmodels.compat.collections import OrderedDict
+from collections import OrderedDict
 from statsmodels.compat.python import string_types
 from statsmodels.compat import range
 import warnings
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from statsmodels.base._penalties import Penalty
 from statsmodels.compat.numpy import np_matrix_rank
-from pandas import DataFrame
 
 
 def _dot(x, y):
@@ -415,94 +413,117 @@ class MixedLMParams(object):
         return pa
 
 
-def _smw_solver(s, A, AtA, BI, di):
+def _smw_solver(s, A, AtA, Qi, di):
     """
-    Solves the system (s*I + A*B*A') * x = rhs for an arbitrary rhs.
+    Returns a solver for the linear system:
 
-    The inverse matrix of B is block diagonal.  The upper left block
-    is BI and the lower right block is a diagonal matrix containing
-    di.
+    .. math::
+
+        (sI + ABA^\prime) y = x
+
+    The returned function f satisfies f(x) = y as defined above.
+
+    B and its inverse matrix are block diagonal.  The upper left block
+    of :math:`B^{-1}` is Qi and its lower right block is diag(di).
 
     Parameters
     ----------
     s : scalar
         See above for usage
     A : ndarray
-        See above for usage
+        p x q matrix, in general q << p, may be sparse.
     AtA : square ndarray
-        A.T * A
-    BI : square symmetric ndarray
-        The inverse of `B`.
-    di : array-like
+        :math:`A^\prime  A`, a q x q matrix.
+    Qi : square symmetric ndarray
+        The matrix `B` is q x q, where q = r + d.  `B` consists of a r
+        x r diagonal block whose inverse is `Qi`, and a d x d diagonal
+        block, whose inverse is diag(di).
+    di : 1d array-like
+        See documentation for Qi.
 
     Returns
     -------
-    A function that takes `rhs` as an input argument and returns a
-    solution to the linear system defined above.
+    A function for solving a linear system, as documented above.
+
+    Notes
+    -----
+    Uses Sherman-Morrison-Woodbury identity:
+        https://en.wikipedia.org/wiki/Woodbury_matrix_identity
     """
 
     # Use SMW identity
     qmat = AtA / s
-    m = BI.shape[0]
-    qmat[0:m, 0:m] += BI
-    ix = np.arange(m, A.shape[1])
-    qmat[ix, ix] += di
+    if sparse.issparse(qmat):
+        qmat = qmat.todense()
+    m = Qi.shape[0]
+    qmat[0:m, 0:m] += Qi
+    d = qmat.shape[0]
+    qmat.flat[m*(d+1)::d+1] += di
     if sparse.issparse(A):
-        qi = sparse.linalg.inv(qmat)
-        qmati = A.dot(qi.T).T
+        qmati = sparse.linalg.spsolve(sparse.csc_matrix(qmat), A.T)
     else:
         qmati = np.linalg.solve(qmat, A.T)
 
-    def solver(rhs):
-        if sparse.issparse(A):
+    if sparse.issparse(A):
+        def solver(rhs):
             ql = qmati.dot(rhs)
             ql = A.dot(ql)
-        else:
+            return rhs / s - ql / s**2
+    else:
+        def solver(rhs):
             ql = np.dot(qmati, rhs)
             ql = np.dot(A, ql)
-        rslt = rhs / s - ql / s**2
-        if sparse.issparse(rslt):
-            rslt = np.asarray(rslt.todense())
-        return rslt
+            return rhs / s - ql / s**2
 
     return solver
 
 
-def _smw_logdet(s, A, AtA, BI, di, B_logdet):
+def _smw_logdet(s, A, AtA, Qi, di, B_logdet):
     """
-    Returns the log determinant of s*I + A*B*A'.
+    Returns the log determinant of
+
+    .. math::
+
+        sI + ABA^\prime
 
     Uses the matrix determinant lemma to accelerate the calculation.
+    B is assumed to be positive definite, and s > 0, therefore the
+    determinant is positive.
 
     Parameters
     ----------
-    s : scalar
+    s : positive scalar
         See above for usage
-    A : square symmetric ndarray
-        See above for usage
-    AtA : square matrix
-        A.T * A
-    BI : square symmetric ndarray
-        The upper left block of B^-1.
-    di : array-like
-        The diagonal elements of the lower right block of B^-1.
+    A : ndarray
+        p x q matrix, in general q << p.
+    AtA : square ndarray
+        :math:`A^\prime  A`, a q x q matrix.
+    Qi : square symmetric ndarray
+        The matrix `B` is q x q, where q = r + d.  `B` consists of a r
+        x r diagonal block whose inverse is `Qi`, and a d x d diagonal
+        block, whose inverse is diag(di).
+    di : 1d array-like
+        See documentation for Qi.
     B_logdet : real
         The log determinant of B
 
     Returns
     -------
     The log determinant of s*I + A*B*A'.
+
+    Notes
+    -----
+    Uses the matrix determinant lemma:
+        https://en.wikipedia.org/wiki/Matrix_determinant_lemma
     """
 
     p = A.shape[0]
     ld = p * np.log(s)
     qmat = AtA / s
-    m = BI.shape[0]
-    qmat[0:m, 0:m] += BI
-    ix = np.arange(m, A.shape[1])
-    qmat[ix, ix] += di
-    if sparse.issparse(qmat):
-        qmat = qmat.todense()
+    m = Qi.shape[0]
+    qmat[0:m, 0:m] += Qi
+    d = qmat.shape[0]
+    qmat.flat[m*(d+1)::d+1] += di
     _, ld1 = np.linalg.slogdet(qmat)
     return B_logdet + ld + ld1
 
@@ -715,7 +736,12 @@ class MixedLM(base.LikelihoodModel):
         for i in range(self.n_groups):
             a = self._augment_exog(i)
             self._aex_r.append(a)
-            self._aex_r2.append(_dot(a.T, a))
+
+            # This matrix is not very sparse so convert it to dense.
+            ma = _dot(a.T, a)
+            if sparse.issparse(ma):
+                ma = ma.todense()
+            self._aex_r2.append(ma)
 
         # Precompute this
         self._lin, self._quad = self._reparam()
@@ -819,15 +845,15 @@ class MixedLM(base.LikelihoodModel):
 
         Examples
         --------
-        Suppose we have an educational data set with students nested
-        in classrooms nested in schools.  The students take a test,
-        and we want to relate the test scores to the students' ages,
-        while accounting for the effects of classrooms and schools.
-        The school will be the top-level group, and the classroom is a
-        nested group that is specified as a variance component.  Note
-        that the schools may have different number of classrooms, and
-        the classroom labels may (but need not be) different across
-        the schools.
+        Suppose we have data from an educational study with students
+        nested in classrooms nested in schools.  The students take a
+        test, and we want to relate the test scores to the students'
+        ages, while accounting for the effects of classrooms and
+        schools.  The school will be the top-level group, and the
+        classroom is a nested group that is specified as a variance
+        component.  Note that the schools may have different number of
+        classrooms, and the classroom labels may (but need not be)
+        different across the schools.
 
         >>> vc = {'classroom': '0 + C(classroom)'}
         >>> MixedLM.from_formula('test_score ~ age', vc_formula=vc, \
@@ -863,6 +889,8 @@ class MixedLM(base.LikelihoodModel):
         if isinstance(groups, string_types):
             group_name = groups
             groups = np.asarray(data[groups])
+        else:
+            groups = np.asarray(groups)
         del kwargs["groups"]
 
         # Bypass all upstream missing data handling to properly handle
@@ -910,14 +938,18 @@ class MixedLM(base.LikelihoodModel):
             gb = data.groupby(groups)
             kylist = list(gb.groups.keys())
             kylist.sort()
+            exog_vc_names = {}
             for vc_name in vc_formula.keys():
                 exog_vc[vc_name] = {}
                 for group_ix, group in enumerate(kylist):
+                    if group not in exog_vc_names:
+                        exog_vc_names[group] = {}
                     ii = gb.groups[group]
                     vcg = vc_formula[vc_name]
                     mat = patsy.dmatrix(
                         vcg, data.loc[ii, :], eval_env=eval_env,
                         return_type='dataframe')
+                    exog_vc_names[group][vc_name] = mat.columns.tolist()
                     if use_sparse:
                         exog_vc[vc_name][group] = sparse.csr_matrix(mat)
                     else:
@@ -938,7 +970,10 @@ class MixedLM(base.LikelihoodModel):
         mod.data.param_names = param_names
         mod.data.exog_re_names = exog_re_names
         mod.data.exog_re_names_full = exog_re_names_full
-        mod.data.vcomp_names = mod._vc_names
+
+        if vc_formula is not None:
+            mod.data.vcomp_names = mod._vc_names
+            mod._exog_vc_names = exog_vc_names
 
         return mod
 
@@ -1543,11 +1578,11 @@ class MixedLM(base.LikelihoodModel):
 
         # Handle the covariance penalty.
         if self.cov_pen is not None:
-            score_re -= self.cov_pen.grad(cov_re, cov_re_inv)
+            score_re -= self.cov_pen.deriv(cov_re, cov_re_inv)
 
         # Handle the fixed effects penalty.
         if calc_fe and (self.fe_pen is not None):
-            score_fe -= self.fe_pen.grad(fe_params)
+            score_fe -= self.fe_pen.deriv(fe_params)
 
         # resid' V^{-1} resid, summed over the groups (a scalar)
         rvir = 0.
@@ -1903,7 +1938,7 @@ class MixedLM(base.LikelihoodModel):
 
     def fit(self, start_params=None, reml=True, niter_sa=0,
             do_cg=True, fe_pen=None, cov_pen=None, free=None,
-            full_output=False, method='bfgs', **kwargs):
+            full_output=False, method=None, **kwargs):
         """
         Fit a linear mixed model to the data.
 
@@ -1918,8 +1953,15 @@ class MixedLM(base.LikelihoodModel):
         reml : bool
             If true, fit according to the REML likelihood, else
             fit the standard likelihood using ML.
+        niter_sa :
+            Currently this argument is ignored and has no effect
+            on the results.
         cov_pen : CovariancePenalty object
             A penalty for the random effects covariance matrix
+        do_cg : boolean, defaults to True
+            If False, the optimization is skipped and a results
+            object at the given (or default) starting values is
+            returned.
         fe_pen : Penalty object
             A penalty on the fixed effects
         free : MixedLMParams object
@@ -1934,20 +1976,29 @@ class MixedLM(base.LikelihoodModel):
         full_output : bool
             If true, attach iteration history to results
         method : string
-            Optimization method.
+            Optimization method.  Can be a scipy.optimize method name,
+            or a list of such names to be tried in sequence.
 
         Returns
         -------
         A MixedLMResults instance.
         """
 
-        _allowed_kwargs = ['gtol', 'maxiter']
+        _allowed_kwargs = ['gtol', 'maxiter', 'eps', 'maxcor', 'ftol',
+                           'tol', 'disp', 'maxls']
         for x in kwargs.keys():
             if x not in _allowed_kwargs:
-                raise ValueError("Argument %s not allowed for MixedLM.fit" % x)
+                warnings.warn("Argument %s not used by MixedLM.fit" % x)
 
-        if method.lower() in ["newton", "ncg"]:
-            raise ValueError("method %s not available for MixedLM" % method)
+        if method is None:
+            method = ['bfgs', 'lbfgs']
+        elif isinstance(method, str):
+            method = [method]
+
+        for meth in method:
+            if meth.lower() in ["newton", "ncg"]:
+                raise ValueError(
+                    "method %s not available for MixedLM" % meth)
 
         self.reml = reml
         self.cov_pen = cov_pen
@@ -1959,8 +2010,6 @@ class MixedLM(base.LikelihoodModel):
             hist = []
         else:
             hist = None
-
-        success = False
 
         if start_params is None:
             params = MixedLMParams(self.k_fe, self.k_re, self.k_vc)
@@ -1989,16 +2038,27 @@ class MixedLM(base.LikelihoodModel):
                 kwargs["disp"] = False
             packed = params.get_packed(use_sqrt=self.use_sqrt, has_fe=False)
 
-            # It seems that the optimizers sometimes stop too soon, so
-            # we run a few times.
-            for rep in range(5):
+            if niter_sa > 0:
+                warnings.warn("niter_sa is currently ignored")
+
+            # Try optimizing one or more times
+            for j in range(len(method)):
                 rslt = super(MixedLM, self).fit(start_params=packed,
                                                 skip_hessian=True,
-                                                method=method,
+                                                method=method[j],
                                                 **kwargs)
                 if rslt.mle_retvals['converged']:
                     break
                 packed = rslt.params
+                if j + 1 < len(method):
+                    next_method = method[j + 1]
+                    warnings.warn(
+                        "Retrying MixedLM optimization with %s" % next_method,
+                        ConvergenceWarning)
+                else:
+                    msg = ("MixedLM optimization failed, " +
+                           "trying a different optimizer may help.")
+                    warnings.warn(msg, ConvergenceWarning)
 
             # The optimization succeeded
             params = np.atleast_1d(rslt.params)
@@ -2007,7 +2067,9 @@ class MixedLM(base.LikelihoodModel):
 
         converged = rslt.mle_retvals['converged']
         if not converged:
-            msg = "Gradient optimization failed."
+            gn = self.score(rslt.params)
+            gn = np.sqrt(np.sum(gn**2))
+            msg = "Gradient optimization failed, |grad| = %f" % gn
             warnings.warn(msg, ConvergenceWarning)
 
         # Convert to the final parameterization (i.e. undo the square
@@ -2183,10 +2245,10 @@ class MixedLMResults(base.LikelihoodModelResults, base.ResultMixin):
         names = list(self.model.data.exog_re_names)
 
         for v in self.model._vc_names:
-            if group in self.model.exog_vc[v]:
-                ix = range(self.model.exog_vc[v][group].shape[1])
-                na = ["%s[%d]" % (v, j + 1) for j in ix]
-                names.extend(na)
+            vg = self.model._exog_vc_names[group][v]
+            na = ["%s[%s]" % (v, s) for s in vg]
+            names.extend(na)
+
         return names
 
     @cache_readonly
@@ -2198,7 +2260,8 @@ class MixedLMResults(base.LikelihoodModelResults, base.ResultMixin):
         -------
         random_effects : dict
             A dictionary mapping the distinct `group` values to the
-            means of the random effects for the group.
+            conditional means of the random effects for the group
+            given the data.
         """
         try:
             cov_re_inv = np.linalg.inv(self.cov_re)
@@ -2264,14 +2327,14 @@ class MixedLMResults(base.LikelihoodModelResults, base.ResultMixin):
             ex_r = self.model._aex_r[group_ix]
             ex2_r = self.model._aex_r2[group_ix]
             label = self.model.group_labels[group_ix]
-            vc_var = self.model._expand_vcomp(vcomp, group_ix)
+            vc_var = self.model._expand_vcomp(vcomp, label)
 
             solver = _smw_solver(self.scale, ex_r, ex2_r, cov_re_inv,
                                  1 / vc_var)
 
             n = ex_r.shape[0]
             m = self.cov_re.shape[0]
-            mat1 = np.empty((n, m))
+            mat1 = np.empty((n, m + len(vc_var)))
             mat1[:, 0:m] = np.dot(ex_r[:, 0:m], self.cov_re)
             mat1[:, m:] = np.dot(ex_r[:, m:], np.diag(vc_var))
             mat2 = solver(mat1)
@@ -2281,7 +2344,7 @@ class MixedLMResults(base.LikelihoodModelResults, base.ResultMixin):
             v[0:m, 0:m] += self.cov_re
             ix = np.arange(m, v.shape[0])
             v[ix, ix] += vc_var
-            na = self._expand_re_names(group_ix)
+            na = self._expand_re_names(label)
             v = pd.DataFrame(v, index=na, columns=na)
             ranef_dict[label] = v
 
@@ -2366,6 +2429,20 @@ class MixedLMResults(base.LikelihoodModelResults, base.ResultMixin):
         info["Model:"] = "MixedLM"
         if yname is None:
             yname = self.model.endog_names
+        param_names = self.model.data.param_names[:]
+        k_fe_params = len(self.fe_params)
+        k_re_params = len(param_names) - len(self.fe_params)
+        if xname_fe is not None:
+            if len(xname_fe) != k_fe_params:
+                msg = "xname_fe should be a list of length %d" % k_fe_params
+                raise ValueError(msg)
+            param_names[:k_fe_params] = xname_fe
+        if xname_re is not None:
+            if len(xname_re) != k_re_params:
+                msg = "xname_re should be a list of length %d" % k_re_params
+                raise ValueError(msg)
+            param_names[k_fe_params:] = xname_re
+
         info["No. Observations:"] = str(self.model.n_totobs)
         info["No. Groups:"] = str(self.model.n_groups)
 
@@ -2417,7 +2494,7 @@ class MixedLMResults(base.LikelihoodModelResults, base.ResultMixin):
             sdf[jj, 1] = np.sqrt(self.scale) * self.bse[jj]
             jj += 1
 
-        sdf = pd.DataFrame(index=self.model.data.param_names, data=sdf)
+        sdf = pd.DataFrame(index=param_names, data=sdf)
         sdf.columns = ['Coef.', 'Std.Err.', 'z', 'P>|z|',
                        '[' + str(alpha/2), str(1-alpha/2) + ']']
         for col in sdf.columns:
@@ -2495,7 +2572,7 @@ class MixedLMResults(base.LikelihoodModelResults, base.ResultMixin):
         k_fe = pmodel.k_fe
         k_re = pmodel.k_re
         k_vc = pmodel.k_vc
-        endog, exog, groups = pmodel.endog, pmodel.exog, pmodel.groups
+        endog, exog = pmodel.endog, pmodel.exog
 
         # Need to permute the columns of the random effects design
         # matrix so that the profiled variable is in the first column.

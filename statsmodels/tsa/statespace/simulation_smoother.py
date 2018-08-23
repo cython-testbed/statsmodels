@@ -132,10 +132,6 @@ class SimulationSmoother(KalmanSmoother):
     def _simulate(self, nsimulations, measurement_shocks, state_shocks,
                   initial_state):
 
-        if self._compatibility_mode:
-            return super(SimulationSmoother, self)._simulate(
-                nsimulations, measurement_shocks, state_shocks, initial_state)
-
         prefix = self.prefix
 
         # Create the simulator if necessary
@@ -222,11 +218,6 @@ class SimulationSmoother(KalmanSmoother):
         -------
         SimulationSmoothResults
         """
-
-        if self._compatibility_mode:
-            raise NotImplementedError('Simulation smoothing is not available.'
-                                      ' Consider updating dependencies for'
-                                      ' more options.')
 
         # Set the class to be the default results class, if None provided
         if results_class is None:
@@ -531,7 +522,7 @@ class SimulationSmoothResults(object):
         return self._simulated_state_disturbance
 
     def simulate(self, simulation_output=-1, disturbance_variates=None,
-                 initial_state_variates=None):
+                 initial_state_variates=None, pretransformed_variates=False):
         r"""
         Perform simulation smoothing
 
@@ -573,7 +564,8 @@ class SimulationSmoothResults(object):
         # simulation
         if disturbance_variates is not None:
             self._simulation_smoother.set_disturbance_variates(
-                np.array(disturbance_variates, dtype=self.dtype)
+                np.array(disturbance_variates, dtype=self.dtype),
+                pretransformed=pretransformed_variates
             )
         else:
             self._simulation_smoother.draw_disturbance_variates()
@@ -582,7 +574,8 @@ class SimulationSmoothResults(object):
         # simulation
         if initial_state_variates is not None:
             self._simulation_smoother.set_initial_state_variates(
-                np.array(initial_state_variates, dtype=self.dtype)
+                np.array(initial_state_variates, dtype=self.dtype),
+                pretransformed=pretransformed_variates
             )
         else:
             self._simulation_smoother.draw_initial_state_variates()

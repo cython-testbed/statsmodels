@@ -13,24 +13,19 @@ Author: Chad Fulton
 License: Simplified-BSD
 """
 from __future__ import division, absolute_import, print_function
-from statsmodels.compat.testing import SkipTest, skip
 
 import numpy as np
 import pandas as pd
+import pytest
 import os
 
 from statsmodels import datasets
 from statsmodels.tsa.statespace.mlemodel import MLEModel
-from statsmodels.tsa.statespace.tools import compatibility_mode
 from statsmodels.tsa.statespace.tests.results import results_kalman_filter
 from numpy.testing import assert_almost_equal, assert_allclose
 import pytest
 
 current_path = os.path.dirname(os.path.abspath(__file__))
-
-if compatibility_mode:
-    raise SkipTest('In compatibility mode.')
-    pytestmark = pytest.mark.skip('In compatibility mode.')
 
 
 class TestClark1989(object):
@@ -383,14 +378,14 @@ class MultivariateMissingGeneralObsCov(object):
             self.univariate_results.smoothed_state_cov, 6
         )
 
-    @skip
+    @pytest.mark.skip
     def test_smoothed_measurement_disturbance(self):
         assert_almost_equal(
             self.conventional_results.smoothed_measurement_disturbance,
             self.univariate_results.smoothed_measurement_disturbance, 9
         )
 
-    @skip
+    @pytest.mark.skip
     def test_smoothed_measurement_disturbance_cov(self):
         assert_almost_equal(
             self.conventional_results.smoothed_measurement_disturbance_cov.diagonal(),
@@ -416,7 +411,7 @@ class MultivariateMissingGeneralObsCov(object):
             self.univariate_sim.simulated_state, 9
         )
 
-    @skip
+    @pytest.mark.skip
     def test_simulation_smoothed_measurement_disturbance(self):
         assert_almost_equal(
             self.conventional_sim.simulated_measurement_disturbance,
@@ -623,14 +618,14 @@ class TestMultivariateVAR(object):
             self.univariate_results.smoothed_state_cov, atol=1e-9
         )
 
-    @skip
+    @pytest.mark.skip
     def test_smoothed_measurement_disturbance(self):
         assert_almost_equal(
             self.conventional_results.smoothed_measurement_disturbance,
             self.univariate_results.smoothed_measurement_disturbance, 9
         )
 
-    @skip
+    @pytest.mark.skip
     def test_smoothed_measurement_disturbance_cov(self):
         assert_almost_equal(
             self.conventional_results.smoothed_measurement_disturbance_cov.diagonal(),
@@ -656,7 +651,7 @@ class TestMultivariateVAR(object):
             self.univariate_sim.simulated_state, 9
         )
 
-    @skip
+    @pytest.mark.skip
     def test_simulation_smoothed_measurement_disturbance(self):
         assert_almost_equal(
             self.conventional_sim.simulated_measurement_disturbance,

@@ -67,7 +67,7 @@ def summary(self, yname=None, xname=None, title=0, alpha=.05,
     Examples (needs updating)
     --------
     >>> import statsmodels as sm
-    >>> data = sm.datasets.longley.load()
+    >>> data = sm.datasets.longley.load(as_pandas=False)
     >>> data.exog = sm.add_constant(data.exog)
     >>> ols_results = sm.OLS(data.endog, data.exog).results
     >>> print ols_results.summary()
@@ -463,6 +463,9 @@ def summary_params(results, yname=None, xname=None, alpha=.05, use_t=True,
 
     _, xname = _getnames(results, yname=yname, xname=xname)
 
+    if len(xname) != len(params):
+        raise ValueError('xnames and params do not have the same length')
+
     params_stubs = xname
 
     exog_idx = lrange(len(xname))
@@ -617,8 +620,7 @@ def summary_params_2d(result, extras=None, endog_names=None, exog_names=None,
 
 
 def summary_params_2dflat(result, endog_names=None, exog_names=None, alpha=0.05,
-                          use_t=True, keep_headers=True, endog_cols=False):
-                          #skip_headers2=True):
+                          use_t=True, keep_headers=True, endog_cols=False): #skip_headers2=True):
     '''summary table for parameters that are 2d, e.g. multi-equation models
 
     Parameters
@@ -945,8 +947,7 @@ class Summary(object):
 
 if __name__ == "__main__":
     import statsmodels.api as sm
-    data = sm.datasets.longley.load()
+    data = sm.datasets.longley.load(as_pandas=False)
     data.exog = sm.add_constant(data.exog)
     res = sm.OLS(data.endog, data.exog).fit()
     #summary(
-

@@ -219,7 +219,7 @@ class DiscreteL1(object):
     def logit(self):
         """
         Results generated with:
-            data = sm.datasets.spector.load()
+            data = sm.datasets.spector.load(as_pandas=False)
             data.exog = sm.add_constant(data.exog, prepend=True)
             alpha = 3 * np.array([0, 1, 1, 1])
             res2 = sm.Logit(data.endog, data.exog).fit_regularized(
@@ -260,7 +260,7 @@ class DiscreteL1(object):
     def probit(self):
         """
         Results generated with
-            data = sm.datasets.spector.load()
+            data = sm.datasets.spector.load(as_pandas=False)
             data.exog = sm.add_constant(data.exog, prepend=True)
             alpha = np.array([0.1, 0.2, 0.3, 10])
             res2 = sm.Probit(data.endog, data.exog).fit_regularized(
@@ -285,7 +285,7 @@ class DiscreteL1(object):
     def mnlogit(self):
         """
         Results generated with
-            anes_data = sm.datasets.anes96.load()
+            anes_data = sm.datasets.anes96.load(as_pandas=False)
             anes_exog = anes_data.exog
             anes_exog = sm.add_constant(anes_exog, prepend=False)
             mlogit_mod = sm.MNLogit(anes_data.endog, anes_exog)
@@ -917,7 +917,7 @@ class RandHIE(object):
                          [ .7151889,    .7993652],
                         # from stata for alpha no lnalpha
                          [ 3.609675,    3.856716]]
-           #[  1.28360034e+00,   1.34979803e+00]]
+        #   [  1.28360034e+00,   1.34979803e+00]]
         self.fittedvalues = [ 0.8487497 ,  0.8487497 ,  0.8487497 ,  0.8487497,
             0.8487497 , 0.88201746,  0.88201746,  0.88201746,  0.88201746,
             0.88201746]

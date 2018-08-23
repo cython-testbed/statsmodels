@@ -7,7 +7,6 @@ from numpy.testing import assert_equal
 from statsmodels.iolib.summary2 import summary_col
 from statsmodels.regression.linear_model import OLS, add_constant
 
-
 class TestSummaryLatex(object):
 
     def test_summarycol(self):

@@ -9,7 +9,7 @@ tests.
 """
 # pylint: disable-msg=E1101
 from statsmodels.compat.python import range
-from statsmodels.compat.testing import SkipTest, skip
+
 import os
 import warnings
 
@@ -28,7 +28,8 @@ from statsmodels.discrete.discrete_margins import _iscount, _isdummy
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from .results.results_discrete import Spector, DiscreteL1, RandHIE, Anes
-from statsmodels.tools.sm_exceptions import PerfectSeparationError
+from statsmodels.tools.sm_exceptions import (PerfectSeparationError,
+                                             ConvergenceWarning)
 from scipy.stats import nbinom
 
 try:
@@ -330,7 +331,7 @@ class TestProbitNewton(CheckBinaryResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = Probit(data.endog, data.exog).fit(method="newton", disp=0)
         res2 = Spector()
@@ -346,7 +347,7 @@ class TestProbitBFGS(CheckBinaryResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = Probit(data.endog, data.exog).fit(method="bfgs",
             disp=0)
@@ -359,7 +360,7 @@ class TestProbitNM(CheckBinaryResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         res2 = Spector()
         res2.probit()
@@ -372,7 +373,7 @@ class TestProbitPowell(CheckBinaryResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         res2 = Spector()
         res2.probit()
@@ -385,7 +386,7 @@ class TestProbitCG(CheckBinaryResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         res2 = Spector()
         res2.probit()
@@ -413,7 +414,7 @@ class TestProbitNCG(CheckBinaryResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         res2 = Spector()
         res2.probit()
@@ -432,8 +433,8 @@ class TestProbitBasinhopping(CheckBinaryResults):
     @classmethod
     def setup_class(cls):
         if not has_basinhopping:
-            raise SkipTest("Skipped TestProbitBasinhopping since"
-                           " basinhopping solver is not available")
+            pytest.skip("Skipped TestProbitBasinhopping since"
+                            " basinhopping solver is not available")
         data = sm.datasets.spector.load()
         data.exog = sm.add_constant(data.exog, prepend=False)
         res2 = Spector()
@@ -448,7 +449,7 @@ class TestProbitMinimizeDefault(CheckBinaryResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         res2 = Spector()
         res2.probit()
@@ -462,10 +463,10 @@ class TestProbitMinimizeDogleg(CheckBinaryResults):
     @classmethod
     def setup_class(cls):
         if not has_dogleg:
-            raise SkipTest("Skipped TestProbitMinimizeDogleg since "
-                           "dogleg method is not available")
+            pytest.skip("Skipped TestProbitMinimizeDogleg since "
+                            "dogleg method is not available")
 
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         res2 = Spector()
         res2.probit()
@@ -479,7 +480,7 @@ class TestProbitMinimizeAdditionalOptions(CheckBinaryResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         res2 = Spector()
         res2.probit()
@@ -520,7 +521,7 @@ class TestProbitL1(CheckLikelihoodModelL1):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=True)
         alpha = np.array([0.1, 0.2, 0.3, 10]) #/ data.exog.shape[0]
         cls.res1 = Probit(data.endog, data.exog).fit_regularized(
@@ -539,7 +540,7 @@ class TestMNLogitL1(CheckLikelihoodModelL1):
 
     @classmethod
     def setup_class(cls):
-        anes_data = sm.datasets.anes96.load()
+        anes_data = sm.datasets.anes96.load(as_pandas=False)
         anes_exog = anes_data.exog
         anes_exog = sm.add_constant(anes_exog, prepend=False)
         mlogit_mod = sm.MNLogit(anes_data.endog, anes_exog)
@@ -557,7 +558,7 @@ class TestLogitL1(CheckLikelihoodModelL1):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=True)
         cls.alpha = 3 * np.array([0., 1., 1., 1.]) #/ data.exog.shape[0]
         cls.res1 = Logit(data.endog, data.exog).fit_regularized(
@@ -579,7 +580,7 @@ class TestCVXOPT(object):
     @classmethod
     def setup_class(cls):
         if not has_cvxopt:
-            raise SkipTest('Skipped test_cvxopt since cvxopt is not available')
+            pytest.skip('Skipped test_cvxopt since cvxopt is not available')
         cls.data = sm.datasets.spector.load()
         cls.data.exog = sm.add_constant(cls.data.exog, prepend=True)
 
@@ -599,7 +600,7 @@ class TestSweepAlphaL1(object):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=True)
         cls.model = Logit(data.endog, data.exog)
         cls.alphas = np.array(
@@ -679,7 +680,7 @@ class TestPoissonL1Compatability(CheckL1Compatability):
     def setup_class(cls):
         cls.kvars = 10 # Number of variables
         cls.m = 7 # Number of unregularized parameters
-        rand_data = sm.datasets.randhie.load()
+        rand_data = sm.datasets.randhie.load(as_pandas=False)
         rand_exog = rand_data.exog.view(float).reshape(len(rand_data.exog), -1)
         rand_exog = sm.add_constant(rand_exog, prepend=True)
         # Drop some columns and do an unregularized fit
@@ -700,7 +701,7 @@ class TestNegativeBinomialL1Compatability(CheckL1Compatability):
     def setup_class(cls):
         cls.kvars = 10 # Number of variables
         cls.m = 7 # Number of unregularized parameters
-        rand_data = sm.datasets.randhie.load()
+        rand_data = sm.datasets.randhie.load(as_pandas=False)
         rand_exog = rand_data.exog.view(float).reshape(len(rand_data.exog), -1)
         rand_exog_st = (rand_exog - rand_exog.mean(0)) / rand_exog.std(0)
         rand_exog = sm.add_constant(rand_exog_st, prepend=True)
@@ -726,7 +727,7 @@ class TestNegativeBinomialGeoL1Compatability(CheckL1Compatability):
     def setup_class(cls):
         cls.kvars = 10 # Number of variables
         cls.m = 7 # Number of unregularized parameters
-        rand_data = sm.datasets.randhie.load()
+        rand_data = sm.datasets.randhie.load(as_pandas=False)
         rand_exog = rand_data.exog.view(float).reshape(len(rand_data.exog), -1)
         rand_exog = sm.add_constant(rand_exog, prepend=True)
         # Drop some columns and do an unregularized fit
@@ -752,7 +753,7 @@ class TestLogitL1Compatability(CheckL1Compatability):
     def setup_class(cls):
         cls.kvars = 4 # Number of variables
         cls.m = 3 # Number of unregularized parameters
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=True)
         # Do a regularized fit with alpha, effectively dropping the last column
         alpha = np.array([0, 0, 0, 10])
@@ -770,7 +771,7 @@ class TestMNLogitL1Compatability(CheckL1Compatability):
     def setup_class(cls):
         cls.kvars = 4 # Number of variables
         cls.m = 3 # Number of unregularized parameters
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=True)
         alpha = np.array([0, 0, 0, 10])
         cls.res_reg = MNLogit(data.endog, data.exog).fit_regularized(
@@ -791,7 +792,7 @@ class TestMNLogitL1Compatability(CheckL1Compatability):
         assert_almost_equal(np.nan, t_reg.sd[m])
         assert_almost_equal(t_unreg.tvalue, t_reg.tvalue[:m, :m], DECIMAL_3)
 
-    @skip("Skipped test_f_test for MNLogit")
+    @pytest.mark.skip("Skipped test_f_test for MNLogit")
     def test_f_test(self):
         pass
 
@@ -802,7 +803,7 @@ class TestProbitL1Compatability(CheckL1Compatability):
     def setup_class(cls):
         cls.kvars = 4 # Number of variables
         cls.m = 3 # Number of unregularized parameters
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=True)
         alpha = np.array([0, 0, 0, 10])
         cls.res_reg = Probit(data.endog, data.exog).fit_regularized(
@@ -853,7 +854,7 @@ class TestL1AlphaZeroLogit(CompareL11D):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=True)
         cls.res1 = Logit(data.endog, data.exog).fit_regularized(
                 method="l1", alpha=0, disp=0, acc=1e-15, maxiter=1000,
@@ -874,7 +875,7 @@ class TestL1AlphaZeroProbit(CompareL11D):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=True)
         cls.res1 = Probit(data.endog, data.exog).fit_regularized(
                 method="l1", alpha=0, disp=0, acc=1e-15, maxiter=1000,
@@ -886,7 +887,7 @@ class TestL1AlphaZeroMNLogit(CompareL1):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.anes96.load()
+        data = sm.datasets.anes96.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = MNLogit(data.endog, data.exog).fit_regularized(
                 method="l1", alpha=0, disp=0, acc=1e-15, maxiter=1000,
@@ -900,7 +901,7 @@ class TestLogitNewton(CheckBinaryResults, CheckMargEff):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = Logit(data.endog, data.exog).fit(method="newton", disp=0)
         res2 = Spector()
@@ -947,7 +948,7 @@ class TestLogitNewtonPrepend(CheckMargEff):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=True)
         cls.res1 = Logit(data.endog, data.exog).fit(method="newton", disp=0)
         res2 = Spector()
@@ -993,7 +994,7 @@ class TestLogitBFGS(CheckBinaryResults, CheckMargEff):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.spector.load()
+        data = sm.datasets.spector.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         res2 = Spector()
         res2.logit()
@@ -1005,7 +1006,7 @@ class TestPoissonNewton(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = Poisson(data.endog, exog).fit(method='newton', disp=0)
         res2 = RandHIE()
@@ -1043,7 +1044,7 @@ class TestNegativeBinomialNB2Newton(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = NegativeBinomial(data.endog, exog, 'nb2').fit(method='newton', disp=0)
         res2 = RandHIE()
@@ -1097,7 +1098,7 @@ class TestNegativeBinomialNB1Newton(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = NegativeBinomial(data.endog, exog, 'nb1').fit(
                                                             method="newton",
@@ -1139,7 +1140,7 @@ class TestNegativeBinomialNB2BFGS(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = NegativeBinomial(data.endog, exog, 'nb2').fit(
                                                 method='bfgs', disp=0,
@@ -1195,7 +1196,7 @@ class TestNegativeBinomialNB1BFGS(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = NegativeBinomial(data.endog, exog, 'nb1').fit(method="bfgs",
                                                                  maxiter=100,
@@ -1241,7 +1242,7 @@ class TestNegativeBinomialGeometricBFGS(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         mod = NegativeBinomial(data.endog, exog, 'geometric')
         cls.res1 = mod.fit(method='bfgs', disp=0)
@@ -1411,7 +1412,7 @@ class TestMNLogitNewtonBaseZero(CheckMNLogitBaseZero):
     @classmethod
     def setup_class(cls):
 
-        data = sm.datasets.anes96.load()
+        data = sm.datasets.anes96.load(as_pandas=False)
         cls.data = data
         exog = data.exog
         exog = sm.add_constant(exog, prepend=False)
@@ -1424,7 +1425,7 @@ class TestMNLogitNewtonBaseZero(CheckMNLogitBaseZero):
 class TestMNLogitLBFGSBaseZero(CheckMNLogitBaseZero):
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.anes96.load()
+        data = sm.datasets.anes96.load(as_pandas=False)
         cls.data = data
         exog = data.exog
         exog = sm.add_constant(exog, prepend=False)
@@ -1458,14 +1459,21 @@ def test_perfect_prediction():
     # this will raise if you set maxiter high enough with a singular matrix
     from pandas.util.testing import assert_produces_warning
     # this is not thread-safe
-    with assert_produces_warning():
-        warnings.simplefilter('always')
-        mod.fit(disp=False, maxiter=50)  # should not raise but does warn
+    # py 2.7 and 3.3 don't raise here anymore #4235
+    import sys
+    PY3_g3 = sys.version_info[:2] > (3, 3)
+    if PY3_g3:
+        with assert_produces_warning():
+            warnings.simplefilter('always')
+            res = mod.fit(disp=False, maxiter=50)  # should not raise but does warn
+    else:
+        res = mod.fit(disp=False, maxiter=50)
+    assert_(not res.mle_retvals['converged'])
 
 
 def test_poisson_predict():
     #GH: 175, make sure poisson predict works without offset and exposure
-    data = sm.datasets.randhie.load()
+    data = sm.datasets.randhie.load(as_pandas=False)
     exog = sm.add_constant(data.exog, prepend=True)
     res = sm.Poisson(data.endog, exog).fit(method='newton', disp=0)
     pred1 = res.predict()
@@ -1490,15 +1498,22 @@ def test_poisson_newton():
     mod = sm.Poisson(y_count, x)
     from pandas.util.testing import assert_produces_warning
     # this is not thread-safe
-    with assert_produces_warning():
-        warnings.simplefilter('always')
+    # py 2.7 and 3.3 don't raise here anymore #4235
+    import sys
+    PY3_g3 = sys.version_info[:2] > (3, 3)
+    if PY3_g3:
+        with assert_produces_warning():
+            warnings.simplefilter('always')
+            res = mod.fit(start_params=-np.ones(4), method='newton', disp=0)
+    else:
         res = mod.fit(start_params=-np.ones(4), method='newton', disp=0)
+
     assert_(not res.mle_retvals['converged'])
 
 
 def test_issue_339():
     # make sure MNLogit summary works for J != K.
-    data = sm.datasets.anes96.load()
+    data = sm.datasets.anes96.load(as_pandas=False)
     exog = data.exog
     # leave out last exog column
     exog = exog[:,:-1]
@@ -1516,7 +1531,7 @@ def test_issue_339():
 
 
 def test_issue_341():
-    data = sm.datasets.anes96.load()
+    data = sm.datasets.anes96.load(as_pandas=False)
     exog = data.exog
     # leave out last exog column
     exog = exog[:,:-1]
@@ -1642,10 +1657,10 @@ class TestGeneralizedPoisson_p2(object):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         mod = GeneralizedPoisson(data.endog, data.exog, p=2)
-        cls.res1 = mod.fit(method='newton')
+        cls.res1 = mod.fit(method='newton', disp=0)
         res2 = RandHIE()
         res2.generalizedpoisson_gp2()
         cls.res2 = res2
@@ -1693,10 +1708,10 @@ class TestGeneralizedPoisson_transparams(object):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         data.exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = GeneralizedPoisson(data.endog, data.exog, p=2).fit(
-            method='newton', use_transparams=True)
+            method='newton', use_transparams=True, disp=0)
         res2 = RandHIE()
         res2.generalizedpoisson_gp2()
         cls.res2 = res2
@@ -1734,10 +1749,10 @@ class TestGeneralizedPoisson_p1(object):
 
     @classmethod
     def setup_class(cls):
-        cls.data = sm.datasets.randhie.load()
+        cls.data = sm.datasets.randhie.load(as_pandas=False)
         cls.data.exog = sm.add_constant(cls.data.exog, prepend=False)
         cls.res1 = GeneralizedPoisson(
-            cls.data.endog, cls.data.exog, p=1).fit(method='newton')
+            cls.data.endog, cls.data.exog, p=1).fit(method='newton', disp=0)
 
     def test_llf(self):
         poisson_llf = sm.Poisson(
@@ -1811,7 +1826,7 @@ class TestGeneralizedPoisson_underdispersion(object):
             cls.expected_params[-1], 1, size=len(mu_true))
         model_gp = sm.GeneralizedPoisson(cls.endog, exog, p=1)
         cls.res = model_gp.fit(method='nm', xtol=1e-6, maxiter=5000,
-                               maxfun=5000)
+                               maxfun=5000, disp=0)
 
     def test_basic(self):
         res = self.res
@@ -1828,7 +1843,7 @@ class TestGeneralizedPoisson_underdispersion(object):
     def test_newton(self):
         # check newton optimization with start_params
         res = self.res
-        res2 = res.model.fit(start_params=res.params, method='newton')
+        res2 = res.model.fit(start_params=res.params, method='newton', disp=0)
         assert_allclose(res.model.score(res.params),
                         np.zeros(len(res2.params)), atol=0.01)
         assert_allclose(res.model.score(res2.params),
@@ -1863,7 +1878,7 @@ class TestNegativeBinomialPNB2Newton(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         mod = NegativeBinomialP(data.endog, exog, p=2)
         cls.res1 = mod.fit(method='newton', disp=0)
@@ -1912,7 +1927,7 @@ class TestNegativeBinomialPNB1Newton(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         mod = NegativeBinomialP(data.endog, exog, p=1)
         cls.res1 = mod.fit(method="newton", maxiter=100, disp=0,
@@ -1955,7 +1970,7 @@ class TestNegativeBinomialPNB2BFGS(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = NegativeBinomialP(data.endog, exog, p=2).fit(
                                                 method='bfgs', disp=0,
@@ -2010,7 +2025,7 @@ class TestNegativeBinomialPNB1BFGS(CheckModelResults):
 
     @classmethod
     def setup_class(cls):
-        data = sm.datasets.randhie.load()
+        data = sm.datasets.randhie.load(as_pandas=False)
         exog = sm.add_constant(data.exog, prepend=False)
         cls.res1 = NegativeBinomialP(data.endog, exog, p=1).fit(method="bfgs",
                                                                  maxiter=100,
@@ -2081,14 +2096,14 @@ class TestNegativeBinomialPL1Compatability(CheckL1Compatability):
     def setup_class(cls):
         cls.kvars = 10 # Number of variables
         cls.m = 7 # Number of unregularized parameters
-        rand_data = sm.datasets.randhie.load()
+        rand_data = sm.datasets.randhie.load(as_pandas=False)
         rand_exog = rand_data.exog.view(float).reshape(len(rand_data.exog), -1)
         rand_exog_st = (rand_exog - rand_exog.mean(0)) / rand_exog.std(0)
         rand_exog = sm.add_constant(rand_exog_st, prepend=True)
         # Drop some columns and do an unregularized fit
         exog_no_PSI = rand_exog[:, :cls.m]
         mod_unreg = sm.NegativeBinomialP(rand_data.endog, exog_no_PSI)
-        cls.res_unreg = mod_unreg.fit(method="newton", disp=False)
+        cls.res_unreg = mod_unreg.fit(method="newton", disp=0)
         # Do a regularized fit with alpha, effectively dropping the last column
         alpha = 10 * len(rand_data.endog) * np.ones(cls.kvars + 1)
         alpha[:cls.m] = 0
@@ -2101,7 +2116,7 @@ class TestNegativeBinomialPL1Compatability(CheckL1Compatability):
         cls.k_extra = 1  # 1 extra parameter in nb2
 
 
-class  TestNegativeBinomialPPredictProb(object):
+class TestNegativeBinomialPPredictProb(object):
 
     def test_predict_prob_p1(self):
         expected_params = [1, -0.5]
@@ -2115,7 +2130,7 @@ class  TestNegativeBinomialPPredictProb(object):
         prob = size / (size + mu_true)
         endog = nbinom.rvs(size, prob, size=len(mu_true))
 
-        res = sm.NegativeBinomialP(endog, exog).fit()
+        res = sm.NegativeBinomialP(endog, exog).fit(disp=0)
 
         mu = res.predict()
         size = 1. / alpha * mu
@@ -2141,7 +2156,7 @@ class  TestNegativeBinomialPPredictProb(object):
         prob = size / (size + mu_true)
         endog = nbinom.rvs(size, prob, size=len(mu_true))
 
-        res = sm.NegativeBinomialP(endog, exog, p=2).fit()
+        res = sm.NegativeBinomialP(endog, exog, p=2).fit(disp=0)
 
         mu = res.predict()
         size = 1. / alpha
@@ -2163,7 +2178,7 @@ class CheckNull(object):
         return endog, exog
 
     def test_llnull(self):
-        res = self.model.fit(start_params=self.start_params)
+        res = self.model.fit(start_params=self.start_params, disp=0)
         res._results._attach_nullmodel = True
         llf0 = res.llnull
         res_null0 = res.res_null
@@ -2182,7 +2197,7 @@ class TestPoissonNull(CheckNull):
     def setup_class(cls):
         endog, exog = cls._get_data()
         cls.model = Poisson(endog, exog)
-        cls.res_null = Poisson(endog, exog[:, 0]).fit(start_params=[8.5])
+        cls.res_null = Poisson(endog, exog[:, 0]).fit(start_params=[8.5], disp=0)
         # use start params to avoid warnings
         cls.start_params = [8.5, 0]
 
@@ -2197,7 +2212,7 @@ class TestNegativeBinomialNB1Null(CheckNull):
                                           loglike_method='nb1')
         cls.res_null = cls.model_null.fit(start_params=[8, 1000],
                                           method='bfgs', gtol=1e-08,
-                                          maxiter=300)
+                                          maxiter=300, disp=0)
         # for convergence with bfgs, I needed to round down alpha start_params
         cls.start_params = np.array([7.730452, 2.01633068e-02, 1763.0])
 
@@ -2212,7 +2227,7 @@ class TestNegativeBinomialNB2Null(CheckNull):
                                           loglike_method='nb2')
         cls.res_null = cls.model_null.fit(start_params=[8, 0.5],
                                           method='bfgs', gtol=1e-06,
-                                          maxiter=300)
+                                          maxiter=300, disp=0)
         cls.start_params = np.array([8.07216448, 0.01087238, 0.44024134])
 
 
@@ -2225,7 +2240,7 @@ class TestNegativeBinomialNBP2Null(CheckNull):
         cls.model_null = NegativeBinomialP(endog, exog[:, 0], p=2)
         cls.res_null = cls.model_null.fit(start_params=[8, 1],
                                           method='bfgs', gtol=1e-06,
-                                          maxiter=300)
+                                          maxiter=300, disp=0)
         cls.start_params = np.array([8.07216448, 0.01087238, 0.44024134])
 
     def test_start_null(self):
@@ -2245,7 +2260,7 @@ class TestNegativeBinomialNBP1Null(CheckNull):
         cls.model_null = NegativeBinomialP(endog, exog[:, 0], p=1)
         cls.res_null = cls.model_null.fit(start_params=[8, 1],
                                           method='bfgs', gtol=1e-06,
-                                          maxiter=300)
+                                          maxiter=300, disp=0)
         cls.start_params = np.array([7.730452, 2.01633068e-02, 1763.0])
 
     def test_start_null(self):
@@ -2265,7 +2280,7 @@ class TestGeneralizedPoissonNull(CheckNull):
         cls.model_null = GeneralizedPoisson(endog, exog[:, 0], p=1.5)
         cls.res_null = cls.model_null.fit(start_params=[8.4, 1],
                                           method='bfgs', gtol=1e-08,
-                                          maxiter=300)
+                                          maxiter=300, disp=0)
         cls.start_params = np.array([6.91127148, 0.04501334, 0.88393736])
 
 
@@ -2277,7 +2292,7 @@ def test_null_options():
     exog[:nobs // 2, 1] = 0
     mu = np.exp(exog.sum(1))
     endog = np.random.poisson(mu)  # Note no size=nobs in np.random
-    res = Poisson(endog, exog).fit(start_params=np.log([1, 1]))
+    res = Poisson(endog, exog).fit(start_params=np.log([1, 1]), disp=0)
     llnull0 = res.llnull
     assert_(hasattr(res, 'res_llnull') is False)
     res.set_null_options(attach_results=True)
@@ -2358,24 +2373,27 @@ def test_optim_kwds_prelim():
 
 
 def test_unchanging_degrees_of_freedom():
+    import warnings
+    with pytest.warns(None):
+        data = sm.datasets.randhie.load(as_pandas=False)
     # see GH3734
-    data = sm.datasets.randhie.load()
+    warnings.simplefilter('error')
     model = sm.NegativeBinomial(data.endog, data.exog, loglike_method='nb2')
     params = np.array([-0.05654134, -0.21213734,  0.08783102, -0.02991825,
                        0.22902315,  0.06210253,  0.06799444,  0.08406794,
                        0.18530092,  1.36645186])
 
-    res1 = model.fit(start_params=params)
+    res1 = model.fit(start_params=params, disp=0)
     assert_equal(res1.df_model, 8)
 
     reg_params = np.array([-0.04854   , -0.15019404,  0.08363671, -0.03032834,  0.17592454,
         0.06440753,  0.01584555,  0.        ,  0.        ,  1.36984628])
 
-    res2 = model.fit_regularized(alpha=100, start_params=reg_params)
+    res2 = model.fit_regularized(alpha=100, start_params=reg_params, disp=0)
     assert_(res2.df_model != 8)
     # If res2.df_model == res1.df_model, then this test is invalid.
 
-    res3 = model.fit()
+    res3 = model.fit(start_params=params, disp=0)
     # Test that the call to `fit_regularized` didn't modify model.df_model inplace.
     assert_equal(res3.df_model, res1.df_model)
     assert_equal(res3.df_resid, res1.df_resid)

@@ -104,7 +104,6 @@ class ModelData(object):
                                           return_type='dataframe')
                     break
                 except (NameError, PatsyError) as e:
-                    print('not in depth %d' % depth)
                     exc.append(e)   # why do I need a reference from outside except block
                     pass
             else:
@@ -128,7 +127,7 @@ class ModelData(object):
         else:
             # detect where the constant is
             check_implicit = False
-            ptp_ = self.exog.ptp(axis=0)
+            ptp_ = np.ptp(self.exog, axis=0)
             if not np.isfinite(ptp_).all():
                 raise MissingDataError('exog contains inf or nans')
             const_idx = np.where(ptp_ == 0)[0].squeeze()

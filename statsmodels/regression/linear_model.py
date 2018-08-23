@@ -298,6 +298,8 @@ class RegressionModel(base.LikelihoodModel):
             # used in ANOVA
             self.effects = effects = np.dot(Q.T, self.wendog)
             beta = np.linalg.solve(R, effects)
+        else:
+            raise ValueError('method has to be "pinv" or "qr"')
 
         if self._df_model is None:
             self._df_model = float(self.rank - self.k_constant)
@@ -435,7 +437,7 @@ class GLS(RegressionModel):
     --------
     >>> import numpy as np
     >>> import statsmodels.api as sm
-    >>> data = sm.datasets.longley.load()
+    >>> data = sm.datasets.longley.load(as_pandas=False)
     >>> data.exog = sm.add_constant(data.exog)
     >>> ols_resid = sm.OLS(data.endog, data.exog).fit().resid
     >>> res_fit = sm.OLS(ols_resid[1:], ols_resid[:-1]).fit()
@@ -1242,7 +1244,7 @@ def yule_walker(X, order=1, method="unbiased", df=None, inv=False,
     --------
     >>> import statsmodels.api as sm
     >>> from statsmodels.datasets.sunspots import load
-    >>> data = load()
+    >>> data = load(as_pandas=False)
     >>> rho, sigma = sm.regression.yule_walker(data.endog,
     ...                                        order=4, method="mle")
 
@@ -2047,7 +2049,9 @@ class RegressionResults(base.LikelihoodModelResults):
         - 'HAC' and keywords
 
             - `maxlag` integer (required) : number of lags to use
-            - `kernel` string (optional) : kernel, default is Bartlett
+            - `kernel` callable or str (optional) : kernel
+                  currently available kernels are ['bartlett', 'uniform'],
+                  default is Bartlett
             - `use_correction` bool (optional) : If true, use small sample
                   correction
 
@@ -2076,7 +2080,9 @@ class RegressionResults(base.LikelihoodModelResults):
 
             - `time` array_like (required) : index of time periods
             - `maxlag` integer (required) : number of lags to use
-            - `kernel` string (optional) : kernel, default is Bartlett
+            - `kernel` callable or str (optional) : kernel
+                  currently available kernels are ['bartlett', 'uniform'],
+                  default is Bartlett
             - `use_correction` False or string in ['hac', 'cluster'] (optional) :
                   If False the the sandwich covariance is calulated without
                   small sample correction.
@@ -2101,7 +2107,9 @@ class RegressionResults(base.LikelihoodModelResults):
               `groups` : indicator for groups
               `time` : index of time periods
             - `maxlag` integer (required) : number of lags to use
-            - `kernel` string (optional) : kernel, default is Bartlett
+            - `kernel` callable or str (optional) : kernel
+                  currently available kernels are ['bartlett', 'uniform'],
+                  default is Bartlett
             - `use_correction` False or string in ['hac', 'cluster'] (optional) :
                   If False the sandwich covariance is calculated without
                   small sample correction.
@@ -2116,7 +2124,6 @@ class RegressionResults(base.LikelihoodModelResults):
         TODO: Currently there is no check for extra or misspelled keywords,
         except in the case of cov_type `HCx`
         """
-
         import statsmodels.stats.sandwich_covariance as sw
 
         # normalize names
@@ -2126,6 +2133,8 @@ class RegressionResults(base.LikelihoodModelResults):
             cov_type = 'hac-groupsum'
         if 'kernel' in kwds:
             kwds['weights_func'] = kwds.pop('kernel')
+        if 'weights_func' in kwds and not callable(kwds['weights_func']):
+            kwds['weights_func'] = sw.kernel_dict[kwds['weights_func']]
 
         # TODO: make separate function that returns a robust cov plus info
         use_self = kwds.pop('use_self', False)
@@ -2482,7 +2491,7 @@ class RegressionResults(base.LikelihoodModelResults):
                                                  omni_normtest,
                                                  durbin_watson)
 
-        from statsmodels.compat.collections import OrderedDict
+        from collections import OrderedDict
         jb, jbpv, skew, kurtosis = jarque_bera(self.wresid)
         omni, omnipv = omni_normtest(self.wresid)
         dw = durbin_watson(self.wresid)
@@ -2556,7 +2565,8 @@ class OLSResults(RegressionResults):
         from statsmodels.stats.outliers_influence import OLSInfluence
         return OLSInfluence(self)
 
-    def outlier_test(self, method='bonf', alpha=.05):
+    def outlier_test(self, method='bonf', alpha=.05, labels=None,
+                 order=False, cutoff=None):
         """
         Test observations for outliers according to method
 
@@ -2576,6 +2586,16 @@ class OLSResults(RegressionResults):
             See `statsmodels.stats.multitest.multipletests` for details.
         alpha : float
             familywise error rate
+        labels : None or array_like
+            If `labels` is not None, then it will be used as index to the
+            returned pandas DataFrame. See also Returns below
+        order : bool
+            Whether or not to order the results by the absolute value of the
+            studentized residuals. If labels are provided they will also be sorted.
+        cutoff : None or float in [0, 1]
+            If cutoff is not None, then the return only includes observations with
+            multiple testing corrected p-values strictly below the cutoff. The
+            returned array or dataframe can be empty if t
 
         Returns
         -------
@@ -2591,7 +2611,8 @@ class OLSResults(RegressionResults):
         df = df_resid - 1.
         """
         from statsmodels.stats.outliers_influence import outlier_test
-        return outlier_test(self, method, alpha)
+        return outlier_test(self, method, alpha, labels=labels,
+                            order=order, cutoff=cutoff)
 
     def el_test(self, b0_vals, param_nums, return_weights=0,
                 ret_params=0, method='nm',
@@ -2639,7 +2660,7 @@ class OLSResults(RegressionResults):
         Examples
         --------
         >>> import statsmodels.api as sm
-        >>> data = sm.datasets.stackloss.load()
+        >>> data = sm.datasets.stackloss.load(as_pandas=False)
         >>> endog = data.endog
         >>> exog = sm.add_constant(data.exog)
         >>> model = sm.OLS(endog, exog)
@@ -2803,7 +2824,7 @@ wrap.populate_wrapper(RegressionResultsWrapper,
 
 if __name__ == "__main__":
     import statsmodels.api as sm
-    data = sm.datasets.longley.load()
+    data = sm.datasets.longley.load(as_pandas=False)
     data.exog = add_constant(data.exog, prepend=False)
     ols_results = OLS(data.endog, data.exog).fit()  # results
     gls_results = GLS(data.endog, data.exog).fit()  # results

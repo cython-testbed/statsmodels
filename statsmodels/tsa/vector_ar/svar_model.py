@@ -25,12 +25,14 @@ from statsmodels.compat.numpy import np_matrix_rank
 
 mat = np.array
 
+
 def svar_ckerr(svar_type, A, B):
     if A is None and (svar_type == 'A' or svar_type == 'AB'):
         raise ValueError('SVAR of type A or AB but A array not given.')
     if B is None and (svar_type == 'B' or svar_type == 'AB'):
 
         raise ValueError('SVAR of type B or AB but B array not given.')
+
 
 class SVAR(tsbase.TimeSeriesModel):
     r"""
@@ -184,7 +186,6 @@ class SVAR(tsbase.TimeSeriesModel):
                                    solver=solver, override=override,
                                    maxiter=maxiter, maxfun=maxfun)
 
-
     def _get_init_params(self, A_guess, B_guess):
         """
         Returns either the given starting or .1 if none are given.
@@ -229,7 +230,7 @@ class SVAR(tsbase.TimeSeriesModel):
         y_sample = y[lags:]
 
         # Lutkepohl p75, about 5x faster than stated formula
-        var_params = np.linalg.lstsq(z, y_sample)[0]
+        var_params = np.linalg.lstsq(z, y_sample, rcond=-1)[0]
         resid = y_sample - np.dot(z, var_params)
 
         # Unbiased estimate of covariance matrix $\Sigma_u$ of the white noise
@@ -298,7 +299,6 @@ class SVAR(tsbase.TimeSeriesModel):
                 np.log(npl.det(A)**2) + b_slogdet + \
                 np.trace(trc_in))
 
-
         return likl
 
     def score(self, AB_mask):
@@ -315,7 +315,6 @@ class SVAR(tsbase.TimeSeriesModel):
         """
         loglike = self.loglike
         return approx_fprime(AB_mask, loglike, epsilon=1e-8)
-
 
     def hessian(self, AB_mask):
         """
@@ -369,8 +368,6 @@ class SVAR(tsbase.TimeSeriesModel):
         retvals = super(SVAR, self).fit(start_params=start_params,
                     method=solver, maxiter=maxiter,
                     maxfun=maxfun, ftol=1e-20, disp=0).params
-
-
 
         A[A_mask] = retvals[:A_len]
         B[B_mask] = retvals[A_len:]
@@ -448,6 +445,7 @@ class SVAR(tsbase.TimeSeriesModel):
             raise ValueError("Rank condition not met: "
                              "solution may not be unique.")
 
+
 class SVARProcess(VARProcess):
     """
     Class represents a known SVAR(p) process
@@ -479,7 +477,6 @@ class SVARProcess(VARProcess):
         self.names = names
 
     def orth_ma_rep(self, maxn=10, P=None):
-
         """
 
         Unavailable for SVAR
@@ -501,6 +498,7 @@ class SVARProcess(VARProcess):
 
         ma_mats = self.ma_rep(maxn=maxn)
         return mat([np.dot(coefs, P) for coefs in ma_mats])
+
 
 class SVARResults(SVARProcess, VARResults):
     """
@@ -586,6 +584,7 @@ class SVARResults(SVARProcess, VARResults):
         else:
             trendorder = None
         self.k_trend = k_trend
+        self.k_exog = k_trend  # now (0.9) required by VARProcess
         self.trendorder = trendorder
 
         self.exog_names = util.make_lag_names(names, lag_order, k_trend)
@@ -689,7 +688,6 @@ class SVARResults(SVARProcess, VARResults):
             s_type = 'AB'
         g_list = []
 
-
         for i in range(repl):
             #discard first hundred to correct for starting bias
             sim = util.varsim(coefs, intercept, sigma_u,
@@ -709,12 +707,11 @@ class SVARResults(SVARProcess, VARResults):
                         mean_AB = np.mean(g_list, axis = 0)
                         split = len(A_pass[A_mask])
                         opt_A = mean_AB[:split]
-                        opt_A = mean_AB[split:]
+                        opt_B = mean_AB[split:]
                     ma_coll[i] = SVAR(sim, svar_type=s_type, A=A_pass,
                                  B=B_pass).fit(maxlags=k_ar,\
                                  A_guess=opt_A, B_guess=opt_B).\
                                  svar_ma_rep(maxn=T).cumsum(axis=0)
-
 
             elif cum == False:
                 if i < 10:
@@ -739,4 +736,3 @@ class SVARResults(SVARProcess, VARResults):
         lower = ma_sort[index[0],:, :, :]
         upper = ma_sort[index[1],:, :, :]
         return lower, upper
-

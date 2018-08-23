@@ -261,7 +261,7 @@ for it in range(niter):
     bootres[it, :nvar] = res.params
     bootres[it, nvar:] = res.bse
 
-np.set_print(options(linewidth=200))
+np.set_printoptions(linewidth=200)
 print('Bootstrap Results of parameters and parameter standard deviation  OLS')
 print('Parameter estimates')
 print('median', np.median(bootres[:,:5], 0))
@@ -277,7 +277,7 @@ plt.figure()
 for i in range(4):
     plt.subplot(2,2,i+1)
     plt.hist(bootres[:,i],50)
-    plt.title('var%d'%i)
+    plt.title('var%d' % i)
 #@savefig wls_bootstrap.png
 plt.figtext(0.5, 0.935,  'OLS Bootstrap',
                ha='center', color='black', weight='bold', size='large')
@@ -316,7 +316,7 @@ plt.figure()
 for i in range(4):
     plt.subplot(2,2,i+1)
     plt.hist(bootreswls[:,i],50)
-    plt.title('var%d'%i)
+    plt.title('var%d' % i)
 #@savefig wls_bootstrap_rm2.png
 plt.figtext(0.5, 0.935,  'WLS rm2 Bootstrap',
                ha='center', color='black', weight='bold', size='large')
@@ -398,4 +398,3 @@ plt.figtext(0.5, 0.935,  'WLS rm2 Bootstrap',
 #   without a constant. In this case autodedection wouldn't work this
 #   way. Also, I'm not sure whether a ddof keyword parameter can also
 #   handle the hasconst case.
-

@@ -211,6 +211,8 @@ class AR(tsbase.TimeSeriesModel):
         if method == 'mle':  # use Kalman Filter to get initial values
             if k_trend:
                 mu = params[0]/(1-np.sum(params[k_trend:]))
+            else:
+                mu = 0
 
             # modifies predictedvalues in place
             if start < k_ar:
@@ -585,7 +587,7 @@ class AR(tsbase.TimeSeriesModel):
         #elif method == "yw":
         #    params, omega = yule_walker(endog, order=maxlag,
         #            method="mle", demean=False)
-           # how to handle inference after Yule-Walker?
+        #    # how to handle inference after Yule-Walker?
         #    self.params = params #TODO: don't attach here
         #    self.omega = omega
 
@@ -824,12 +826,12 @@ class ARResultsWrapper(wrap.ResultsWrapper):
     _methods = {}
     _wrap_methods = wrap.union_dicts(tsbase.TimeSeriesResultsWrapper._wrap_methods,
                                      _methods)
-wrap.populate_wrapper(ARResultsWrapper, ARResults)
+wrap.populate_wrapper(ARResultsWrapper, ARResults)  # noqa:E305
 
 
 if __name__ == "__main__":
     import statsmodels.api as sm
-    sunspots = sm.datasets.sunspots.load()
+    sunspots = sm.datasets.sunspots.load(as_pandas=False)
 # Why does R demean the data by defaut?
     ar_ols = AR(sunspots.endog)
     res_ols = ar_ols.fit(maxlag=9)

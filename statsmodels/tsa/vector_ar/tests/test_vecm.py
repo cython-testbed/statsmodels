@@ -15,13 +15,16 @@ from statsmodels.tsa.vector_ar.util import seasonal_dummies
 from statsmodels.tsa.vector_ar.var_model import VARProcess
 from statsmodels.tsa.vector_ar.vecm import VECM, select_order, select_coint_rank
 
+import pytest
+pytestmark = pytest.mark.filterwarnings('ignore:in the future np.array_split')
+
 
 class DataSet(object):
     """
     A class for representing the data in a data module.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     data_module : module
         A module contained in the statsmodels/datasets directory.
     n_seasons : list
@@ -45,6 +48,7 @@ class DataSet(object):
 
     def __str__(self):
         return self.data_module.__str__()
+
 
 atol = 0.0005  # absolute tolerance
 rtol = 0  # relative tolerance
@@ -94,8 +98,8 @@ def load_results_statsmodels_exog(dataset):
     This is to check whether the same results are produced no matter whether
     `exog` or `seasons` is being used.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     dataset : DataSet
     """
     results_per_deterministic_terms = dict.fromkeys(dataset.dt_s_list)
@@ -130,8 +134,8 @@ def load_results_statsmodels_exog_coint(dataset):
     results are produced no matter whether `exog_coint` or the `deterministic`
     argument is being used.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     dataset : DataSet
     """
     results_per_deterministic_terms = dict.fromkeys(dataset.dt_s_list)
@@ -170,6 +174,7 @@ def build_err_msg(ds, dt_s, parameter_str):
         err_msg += ", seasons: " + str(seasons)
     return err_msg
 
+
 def setup():
     datasets.append(
         DataSet(e6, [0, 4], [0, 1], ["Dp", "R"]),
@@ -182,6 +187,7 @@ def setup():
         results_sm[ds] = load_results_statsmodels(ds)
         results_sm_exog[ds] = load_results_statsmodels_exog(ds)
         results_sm_exog_coint[ds] = load_results_statsmodels_exog_coint(ds)
+
 
 setup()
 
@@ -712,6 +718,7 @@ def test_var_to_vecm():
             sigma_u = results_sm[ds][dt].sigma_u
             coefs = results_sm[ds][dt].var_rep
             intercept = np.zeros(len(sigma_u))
+            # Note: _params_info k_trend, k_exog, ... is inferred with defaults
             var = VARProcess(coefs, intercept, sigma_u)
             vecm_results = var.to_vecm()
             obtained_pi = vecm_results["Pi"]
@@ -1381,7 +1388,6 @@ def test_VECM_seasonal_forecast():
     res0 = VECM(xx, k_ar_diff=0, coint_rank=2, deterministic='co', seasons=seasons, first_season=0).fit()
     res2 = VECM(xx, k_ar_diff=2, coint_rank=2, deterministic='co', seasons=seasons, first_season=0).fit()
     res4 = VECM(xx, k_ar_diff=4, coint_rank=2, deterministic='co', seasons=seasons, first_season=0).fit()
-
 
     # check that seasonal dummy are independent of number of lags
     assert_allclose(res2._delta_x.T[-2 * seasons:, -seasons:],

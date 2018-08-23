@@ -1,26 +1,26 @@
 """
 Statistical tools for time series analysis
 """
-from statsmodels.compat.python import (iteritems, range, lrange, string_types,
-                                       lzip, zip, long)
-from statsmodels.compat.scipy import _next_regular
-
 import numpy as np
 from numpy.linalg import LinAlgError
 from scipy import stats
 
+from statsmodels.compat.python import (iteritems, range, lrange, string_types,
+                                       lzip, zip, long)
+from statsmodels.compat.scipy import _next_regular
 from statsmodels.regression.linear_model import OLS, yule_walker
-from statsmodels.tools.tools import add_constant, Bunch
-from statsmodels.tsa.tsatools import lagmat, lagmat2ds, add_trend
-from statsmodels.tsa.adfvalues import mackinnonp, mackinnoncrit
-from statsmodels.tsa._bds import bds
-from statsmodels.tsa.arima_model import ARMA
 from statsmodels.tools.sm_exceptions import InterpolationWarning, MissingDataError
-
+from statsmodels.tools.tools import add_constant, Bunch
+from statsmodels.tsa._bds import bds
+from statsmodels.tsa.adfvalues import mackinnonp, mackinnoncrit
+from statsmodels.tsa.arima_model import ARMA
+from statsmodels.tsa.tsatools import lagmat, lagmat2ds, add_trend
 
 __all__ = ['acovf', 'acf', 'pacf', 'pacf_yw', 'pacf_ols', 'ccovf', 'ccf',
            'periodogram', 'q_stat', 'coint', 'arma_order_select_ic',
            'adfuller', 'kpss', 'bds']
+
+SQRTEPS = np.sqrt(np.finfo(np.double).eps)
 
 
 #NOTE: now in two places to avoid circular import
@@ -381,7 +381,6 @@ def acovf(x, unbiased=False, demean=True, fft=False, missing='none'):
     return acov
 
 
-
 def q_stat(x, nobs, type="ljungbox"):
     """
     Return's Ljung-Box Q Statistic
@@ -550,7 +549,7 @@ def pacf_ols(x, nlags=40):
     pacf = [1.]
     for k in range(1, nlags+1):
         res = OLS(x0[k:], xlags[k:, :k+1]).fit()
-         #np.take(xlags[k:], range(1,k+1)+[-1],
+        #np.take(xlags[k:], range(1,k+1)+[-1],
 
         pacf.append(res.params[-1])
     return np.array(pacf)
@@ -716,7 +715,8 @@ def periodogram(X):
 #copied from nitime and statsmodels\sandbox\tsa\examples\try_ld_nitime.py
 #TODO: check what to return, for testing and trying out returns everything
 def levinson_durbin(s, nlags=10, isacov=False):
-    '''Levinson-Durbin recursion for autoregressive processes
+    """
+    Levinson-Durbin recursion for autoregressive processes
 
     Parameters
     ----------
@@ -735,14 +735,14 @@ def levinson_durbin(s, nlags=10, isacov=False):
     sigma_v : float
         estimate of the error variance ?
     arcoefs : ndarray
-        estimate of the autoregressive coefficients
+        estimate of the autoregressive coefficients for a model including nlags
     pacf : ndarray
         partial autocorrelation function
     sigma : ndarray
         entire sigma array from intermediate result, last value is sigma_v
     phi : ndarray
         entire phi array from intermediate result, last column contains
-        autoregressive coefficients for AR(nlags) with a leading 1
+        autoregressive coefficients for AR(nlags)
 
     Notes
     -----
@@ -752,15 +752,10 @@ def levinson_durbin(s, nlags=10, isacov=False):
     If this function is called with the time series (isacov=False), then the
     sample autocovariance function is calculated with the default options
     (biased, no fft).
-    '''
+    """
     s = np.asarray(s)
-    order = nlags  # rename compared to nitime
-    #from nitime
+    order = nlags
 
-    ##if sxx is not None and type(sxx) == np.ndarray:
-    ##    sxx_m = sxx[:order+1]
-    ##else:
-    ##    sxx_m = ut.autocov(s)[:order+1]
     if isacov:
         sxx_m = s
     else:
@@ -932,6 +927,10 @@ def coint(y0, y1, trend='c', method='aeg', maxlag=None, autolag='aic',
     Constant or trend is included in 1st stage regression, i.e. in
     cointegrating equation.
 
+    **Warning:** The autolag default has changed compared to statsmodels 0.8.
+    In 0.8 autolag was always None, no the keyword is used and defaults to
+    'aic'. Use `autolag=None` to avoid the lag search.
+
     Parameters
     ----------
     y1 : array_like, 1d
@@ -940,6 +939,7 @@ def coint(y0, y1, trend='c', method='aeg', maxlag=None, autolag='aic',
         remaining elements in cointegrating vector
     trend : str {'c', 'ct'}
         trend term included in regression for cointegrating equation
+
         * 'c' : constant
         * 'ct' : constant and linear trend
         * also available quadratic trend 'ctt', and no constant 'nc'
@@ -951,12 +951,19 @@ def coint(y0, y1, trend='c', method='aeg', maxlag=None, autolag='aic',
         keyword for `adfuller`, largest or given number of lags
     autolag : string
         keyword for `adfuller`, lag selection criterion.
+
+        * if None, then maxlag lags are used without lag search
+        * if 'AIC' (default) or 'BIC', then the number of lags is chosen
+          to minimize the corresponding information criterion
+        * 't-stat' based choice of maxlag.  Starts with maxlag and drops a
+          lag until the t-statistic on the last lag length is significant
+          using a 5%-sized test
+
     return_results : bool
         for future compatibility, currently only tuple available.
         If True, then a results instance is returned. Otherwise, a tuple
         with the test outcome is returned.
         Set `return_results=False` to avoid future changes in return.
-
 
     Returns
     -------
@@ -978,6 +985,11 @@ def coint(y0, y1, trend='c', method='aeg', maxlag=None, autolag='aic',
 
     P-values and critical values are obtained through regression surface
     approximation from MacKinnon 1994 and 2010.
+
+    If the two series are almost perfectly collinear, then computing the
+    test is numerically unstable. However, the two series will be cointegrated
+    under the maintained assumption that they are integrated. In this case
+    the t-statistic will be set to -inf and the pvalue to zero.
 
     TODO: We could handle gaps in data by dropping rows with nans in the
     auxiliary regressions. Not implemented yet, currently assumes no nans
@@ -1010,15 +1022,15 @@ def coint(y0, y1, trend='c', method='aeg', maxlag=None, autolag='aic',
 
     res_co = OLS(y0, xx).fit()
 
-    if res_co.rsquared < 1 - np.sqrt(np.finfo(np.double).eps):
-        res_adf = adfuller(res_co.resid, maxlag=maxlag, autolag=None,
+    if res_co.rsquared < 1 - 100 * SQRTEPS:
+        res_adf = adfuller(res_co.resid, maxlag=maxlag, autolag=autolag,
                            regression='nc')
     else:
         import warnings
-        warnings.warn("y0 and y1 are perfectly colinear.  Cointegration test "
-                      "is not reliable in this case.")
+        warnings.warn("y0 and y1 are (almost) perfectly colinear."
+                      "Cointegration test is not reliable in this case.")
         # Edge case where series are too similar
-        res_adf = (0,)
+        res_adf = (-np.inf,)
 
     # no constant or trend, see egranger in Stata and MacKinnon
     if trend == 'nc':
@@ -1059,7 +1071,7 @@ def _safe_arma_fit(y, order, model_kw, trend, fit_kw, start_params=None):
 
 
 def arma_order_select_ic(y, max_ar=4, max_ma=2, ic='bic', trend='c',
-                         model_kw={}, fit_kw={}):
+                         model_kw=None, fit_kw=None):
     """
     Returns information criteria for many ARMA models
 
@@ -1125,14 +1137,16 @@ def arma_order_select_ic(y, max_ar=4, max_ma=2, ic='bic', trend='c',
         raise ValueError("Need a list or a tuple for ic if not a string.")
 
     results = np.zeros((len(ic), max_ar + 1, max_ma + 1))
-
+    model_kw = {} if model_kw is None else model_kw
+    fit_kw = {} if fit_kw is None else fit_kw
+    y_arr = np.asarray(y)
     for ar in ar_range:
         for ma in ma_range:
             if ar == 0 and ma == 0 and trend == 'nc':
                 results[:, ar, ma] = np.nan
                 continue
 
-            mod = _safe_arma_fit(y, (ar, ma), model_kw, trend, fit_kw)
+            mod = _safe_arma_fit(y_arr, (ar, ma), model_kw, trend, fit_kw)
             if mod is None:
                 results[:, ar, ma] = np.nan
                 continue
@@ -1148,10 +1162,11 @@ def arma_order_select_ic(y, max_ar=4, max_ma=2, ic='bic', trend='c',
     min_res = {}
     for i, result in iteritems(res):
         mins = np.where(result.min().min() == result)
-        min_res.update({i + '_min_order' : (mins[0][0], mins[1][0])})
+        min_res.update({i + '_min_order': (mins[0][0], mins[1][0])})
     res.update(min_res)
 
     return Bunch(**res)
+
 
 def has_missing(data):
     """

@@ -273,6 +273,7 @@ if __name__ == '__main__':
     #for checking only,
     #Note on Windows32:
     #    linalg doesn't always produce the same results in each call
+    import scipy.linalg
     a0 = np.random.randn(100,10)
     b0 = a0.sum(1)[:, None] + np.random.randn(100,3)
     lstsq(a0,b0)
@@ -284,4 +285,3 @@ if __name__ == '__main__':
     x = pinv2(a0)
     x2 = scipy.linalg.pinv2(a0)
     print(np.max(np.abs(x-x2)))
-

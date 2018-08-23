@@ -132,16 +132,14 @@ def anova1_lm_single(model, endog, exog, nobs, design_info, table, n_rows, test,
     index = term_names.tolist()
     table.index = Index(index + ['Residual'])
     table.loc[index, ['df', 'sum_sq']] = np.c_[arr[~idx].sum(1), sum_sq]
-    if test == 'F':
-        table.loc[table.index[:n_rows],  test] = ((table['sum_sq']/table['df']) /
-                                                             (model.ssr/model.df_resid))
-        table.loc[table.index[:n_rows], pr_test] = stats.f.sf(table["F"], table["df"],
-                                                                         model.df_resid)
-
     # fill in residual
-    table.loc['Residual', ['sum_sq','df', test, pr_test]] = (model.ssr,
-                                                             model.df_resid,
-                                                             np.nan, np.nan)
+    table.loc['Residual', ['sum_sq','df']] = model.ssr, model.df_resid
+    if test == 'F':
+        table[test] = ((table['sum_sq'] / table['df']) /
+                       (model.ssr / model.df_resid))
+        table[pr_test] = stats.f.sf(table["F"], table["df"],
+                                    model.df_resid)
+        table.loc['Residual', [test, pr_test]] = np.nan, np.nan
     table['mean_sq'] = table['sum_sq'] / table['df']
     return table
 
@@ -223,7 +221,7 @@ def anova2_lm_single(model, design_info, n_rows, test, pr_test, robust):
         index.append(term.name())
 
     table.index = Index(index + ['Residual'])
-    table = table.iloc [np.argsort(col_order + [model.model.exog.shape[1]+1])]
+    table = table.iloc[np.argsort(col_order + [model.model.exog.shape[1]+1])]
     # back out sum of squares from f_test
     ssr = table[test] * table['df'] * model.ssr/model.df_resid
     table['sum_sq'] = ssr
@@ -310,7 +308,7 @@ def anova_lm(*args, **kwargs):
     --------
     >>> import statsmodels.api as sm
     >>> from statsmodels.formula.api import ols
-    >>> moore = sm.datasets.get_rdataset("Moore", "car", cache=True) # load
+    >>> moore = sm.datasets.get_rdataset("Moore", "carData", cache=True) # load
     >>> data = moore.data
     >>> data = data.rename(columns={"partner.status" :
     ...                             "partner_status"}) # make name pythonic
@@ -333,19 +331,9 @@ def anova_lm(*args, **kwargs):
         raise ValueError("Multiple models only supported for type I. "
                          "Got type %s" % str(typ))
 
-    ### COMPUTE Anova TYPE I ###
-
-    # if given a single model
-    if len(args) == 1:
-        return anova_single(*args, **kwargs)
-
-    # received multiple fitted models
-
     test = kwargs.get("test", "F")
     scale = kwargs.get("scale", None)
     n_models = len(args)
-
-    model_formula = []
     pr_test = "Pr(>%s)" % test
     names = ['df_resid', 'ssr', 'df_diff', 'ss_diff', test, pr_test]
     table = DataFrame(np.zeros((n_models, 6)), columns = names)
@@ -574,8 +562,8 @@ class AnovaRM(object):
         df_resid = results.df_resid
         ssr = results.ssr
 
-        anova_table = pd.DataFrame(
-            {'F Value': [], 'Num DF': [], 'Den DF': [], 'Pr > F': []})
+        columns = ['F Value', 'Num DF', 'Den DF', 'Pr > F']
+        anova_table = pd.DataFrame(np.zeros((0, 4)), columns=columns)
 
         for key in term_slices:
             if self.subject not in key and key != 'Intercept':
@@ -602,7 +590,7 @@ class AnovaRM(object):
                 anova_table.loc[term, 'Den DF'] = df2
                 anova_table.loc[term, 'Pr > F'] = p
 
-        return AnovaResults(anova_table.iloc[:, [1, 2, 0, 3]])
+        return AnovaResults(anova_table)
 
 
 class AnovaResults(object):
@@ -639,9 +627,9 @@ if __name__ == "__main__":
     # in R
     #library(car)
     #write.csv(Moore, "moore.csv", row.names=FALSE)
-    moore = pandas.read_table('moore.csv', delimiter=",", skiprows=1,
-                                names=['partner_status','conformity',
-                                    'fcategory','fscore'])
+    moore = pandas.read_csv('moore.csv', skiprows=1,
+                            names=['partner_status','conformity',
+                                   'fcategory','fscore'])
     moore_lm = ols('conformity ~ C(fcategory, Sum)*C(partner_status, Sum)',
                     data=moore).fit()
 

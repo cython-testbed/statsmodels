@@ -28,7 +28,6 @@ import statsmodels.regression.linear_model as lm
 import statsmodels.base.wrapper as wrap
 import statsmodels.regression._tools as reg_tools
 
-
 from statsmodels.graphics._regressionplots_doc import (
     _plot_added_variable_doc,
     _plot_partial_residuals_doc,
@@ -114,8 +113,6 @@ class GLM(base.LikelihoodModel):
         See Parameters.
     normalized_cov_params : array
         `p` x `p` normalized covariance of the design / exogenous data.
-    pinv_wexog : array
-        For GLM this is just the pseudo inverse of the original design.
     scale : float
         The estimate of the scale / dispersion.  Available after fit is called.
     scaletype : str
@@ -127,7 +124,7 @@ class GLM(base.LikelihoodModel):
     Examples
     --------
     >>> import statsmodels.api as sm
-    >>> data = sm.datasets.scotland.load()
+    >>> data = sm.datasets.scotland.load(as_pandas=False)
     >>> data.exog = sm.add_constant(data.exog)
 
     Instantiate a gamma family model with the default link function.
@@ -277,11 +274,6 @@ class GLM(base.LikelihoodModel):
         This is approximately equal to (X.T X)^(-1)
     offset : array-like
         Include offset in model with coefficient constrained to 1.
-    pinv_wexog : array
-        The pseudoinverse of the design / exogenous data array.  Note that
-        GLM has no whiten method, so this is just the pseudo inverse of the
-        design.
-        The pseudoinverse is approximately equal to (X.T X)^(-1)X.T
     scale : float
         The estimate of the scale / dispersion of the model fit.  Only
         available after fit is called.  See GLM.fit and GLM.estimate_scale
@@ -335,13 +327,16 @@ class GLM(base.LikelihoodModel):
         self.nobs = self.endog.shape[0]
 
         # things to remove_data
-        self._data_attr.extend(['weights', 'pinv_wexog', 'mu', 'freq_weights',
+        self._data_attr.extend(['weights', 'mu', 'freq_weights',
                                 'var_weights', 'iweights', '_offset_exposure',
                                 'n_trials'])
         # register kwds for __init__, offset and exposure are added by super
         self._init_keys.append('family')
 
         self._setup_binomial()
+        # internal usage for recreating a model
+        if 'n_trials' in kwargs:
+            self.n_trials = kwargs['n_trials']
 
         # Construct a combined offset/exposure term.  Note that
         # exposure has already been logged if present.
@@ -362,10 +357,6 @@ class GLM(base.LikelihoodModel):
         self.history = {'fittedvalues': [],
                         'params': [np.inf],
                         'deviance': [np.inf]}
-
-        self.pinv_wexog = np.linalg.pinv(self.exog)
-        self.normalized_cov_params = np.dot(self.pinv_wexog,
-                                            np.transpose(self.pinv_wexog))
 
         self.df_model = np_matrix_rank(self.exog) - 1
 
@@ -494,7 +485,8 @@ class GLM(base.LikelihoodModel):
             the sum of `score_obs`
 
         """
-        return self.score_obs(params, scale=scale).sum(0)
+        score_factor = self.score_factor(params, scale=scale)
+        return np.dot(score_factor, self.exog)
 
     def score_factor(self, params, scale=None):
         """weights for score for each observation
@@ -523,7 +515,7 @@ class GLM(base.LikelihoodModel):
 
         score_factor = (self.endog - mu) / self.family.link.deriv(mu)
         score_factor /= self.family.variance(mu)
-        score_factor *= self.iweights
+        score_factor *= self.iweights * self.n_trials
 
         if not scale == 1:
             score_factor /= scale
@@ -575,9 +567,9 @@ class GLM(base.LikelihoodModel):
         tmp = self.family.variance(mu) * self.family.link.deriv2(mu)
         tmp += self.family.variance.deriv(mu) * self.family.link.deriv(mu)
 
-        tmp = score_factor * eim_factor * tmp
+        tmp = score_factor * tmp
         # correct for duplicatee iweights in oim_factor and score_factor
-        tmp /= self.iweights
+        tmp /= self.iweights * self.n_trials
         oim_factor = eim_factor * (1 + tmp)
 
         if tmp.ndim > 1:
@@ -623,6 +615,58 @@ class GLM(base.LikelihoodModel):
         Fisher information matrix.
         """
         return self.hessian(params, scale=scale, observed=False)
+
+    def _deriv_mean_dparams(self, params):
+        """
+        Derivative of the expected endog with respect to the parameters.
+
+        Parameters
+        ----------
+        params : ndarray
+            parameter at which score is evaluated
+
+        Returns
+        -------
+        The value of the derivative of the expected endog with respect
+        to the parameter vector.
+        """
+        lin_pred = self.predict(params, linear=True)
+        idl = self.family.link.inverse_deriv(lin_pred)
+        dmat = self.exog * idl[:, None]
+        return dmat
+
+    def _deriv_score_obs_dendog(self, params, scale=None):
+        """derivative of score_obs w.r.t. endog
+
+        Parameters
+        ----------
+        params : ndarray
+            parameter at which score is evaluated
+        scale : None or float
+            If scale is None, then the default scale will be calculated.
+            Default scale is defined by `self.scaletype` and set in fit.
+            If scale is not None, then it is used as a fixed scale.
+
+        Returns
+        -------
+        derivative : ndarray_2d
+            The derivative of the score_obs with respect to endog. This
+            can is given by `score_factor0[:, None] * exog` where
+            `score_factor0` is the score_factor without the residual.
+
+        """
+        mu = self.predict(params)
+        if scale is None:
+            scale = self.estimate_scale(mu)
+
+        score_factor = 1 / self.family.link.deriv(mu)
+        score_factor /= self.family.variance(mu)
+        score_factor *= self.iweights * self.n_trials
+
+        if not scale == 1:
+            score_factor /= scale
+
+        return score_factor[:, None] * self.exog
 
     def score_test(self, params_constrained, k_constraints=None,
                    exog_extra=None, observed=True):
@@ -921,6 +965,7 @@ class GLM(base.LikelihoodModel):
             tmp = self.family.initialize(self.endog, self.freq_weights)
             self.endog = tmp[0]
             self.n_trials = tmp[1]
+            self._init_keys.append('n_trials')
 
     def fit(self, start_params=None, maxiter=100, method='IRLS', tol=1e-8,
             scale=None, cov_type='nonrobust', cov_kwds=None, use_t=None,
@@ -1040,17 +1085,25 @@ class GLM(base.LikelihoodModel):
         using the scipy gradient optimizers.
         """
 
+        # fix scale during optimization, see #4616
+        scaletype = self.scaletype
+        self.scaletype = 1.
+
         if (max_start_irls > 0) and (start_params is None):
             irls_rslt = self._fit_irls(start_params=start_params,
                                        maxiter=max_start_irls,
-                                       tol=tol, scale=scale, cov_type=cov_type,
-                                       cov_kwds=cov_kwds, use_t=use_t,
+                                       tol=tol, scale=1., cov_type='nonrobust',
+                                       cov_kwds=None, use_t=None,
                                        **kwargs)
             start_params = irls_rslt.params
+            del irls_rslt
 
         rslt = super(GLM, self).fit(start_params=start_params, tol=tol,
                                     maxiter=maxiter, full_output=full_output,
                                     method=method, disp=disp, **kwargs)
+
+        # reset scaletype to original
+        self.scaletype = scaletype
 
         mu = self.predict(rslt.params)
         scale = self.estimate_scale(mu)
@@ -1128,7 +1181,7 @@ class GLM(base.LikelihoodModel):
             wls_results = reg_tools._MinimalWLS(
                     wlsendog,
                     wlsexog,
-                    self.weights).fit(method='lstsq')
+                    self.weights).fit(method=wls_method)
             lin_pred = np.dot(self.exog, wls_results.params)
             lin_pred += self._offset_exposure
             mu = self.family.fitted(lin_pred)
@@ -1358,8 +1411,6 @@ class GLMResults(base.LikelihoodModelResults):
     pearson_chi2 : array
         Pearson's Chi-Squared statistic is defined as the sum of the squares
         of the Pearson residuals.
-    pinv_wexog : array
-        See GLM docstring.
     pvalues : array
         The two-tailed p-values for the parameters.
     resid_anscombe : array
@@ -1417,7 +1468,6 @@ class GLMResults(base.LikelihoodModelResults):
             self._n_trials = 1
         self.df_resid = model.df_resid
         self.df_model = model.df_model
-        self.pinv_wexog = model.pinv_wexog
         self._cache = resettable_cache()
         # are these intermediate results needed or can we just
         # call the model's attributes?
@@ -1484,7 +1534,7 @@ class GLMResults(base.LikelihoodModelResults):
     def resid_anscombe(self):
         import warnings
         warnings.warn('Anscombe residuals currently unscaled. In a future '
-                      'release, they will be scaled.')
+                      'release, they will be scaled.', category=FutureWarning)
         return self.family.resid_anscombe(self._endog, self.fittedvalues,
                                           var_weights=self._var_weights,
                                           scale=1.)
@@ -1528,15 +1578,14 @@ class GLMResults(base.LikelihoodModelResults):
         endog = self._endog
         model = self.model
         exog = np.ones((len(endog), 1))
-        kwargs = {}
-        if hasattr(model, 'offset'):
-            kwargs['offset'] = model.offset
-        if hasattr(model, 'exposure'):
-            kwargs['exposure'] = model.exposure
-        if len(kwargs) > 0:
+
+        kwargs = model._get_init_kwds()
+        kwargs.pop('family')
+        if hasattr(self, '_offset_exposure'):
             return GLM(endog, exog, family=self.family,
                        **kwargs).fit().fittedvalues
         else:
+            # correct if fitted is identical across observations
             wls_model = lm.WLS(endog, exog,
                                weights=self._iweights * self._n_trials)
             return wls_model.fit().fittedvalues
@@ -1608,6 +1657,64 @@ class GLMResults(base.LikelihoodModelResults):
         return res
 
     get_prediction.__doc__ = pred.get_prediction_glm.__doc__
+
+    def get_hat_matrix_diag(self, observed=True):
+        """
+        Compute the diagonal of the hat matrix
+
+        Parameters
+        ----------
+        observed : bool
+            If true, then observed hessian is used in the hat matrix
+            computation. If false, then the expected hessian is used.
+            In the case of a canonical link function both are the same.
+
+        Returns
+        -------
+        hat_matrix_diag : ndarray
+            The diagonal of the hat matrix computed from the observed
+            or expected hessian.
+        """
+        weights = self.model.hessian_factor(self.params, observed=observed)
+        wexog = np.sqrt(weights)[:, None] * self.model.exog
+
+        hd = (wexog * np.linalg.pinv(wexog).T).sum(1)
+        return hd
+
+    def get_influence(self, observed=True):
+        """
+        Get an instance of GLMInfluence with influence and outlier measures
+
+        Parameters
+        ----------
+        observed : bool
+            If true, then observed hessian is used in the hat matrix
+            computation. If false, then the expected hessian is used.
+            In the case of a canonical link function both are the same.
+
+        Returns
+        -------
+        infl : GLMInfluence instance
+            The instance has methods to calculate the main influence and
+            outlier measures as attributes.
+
+        See also
+        --------
+        statsmodels.stats.outliers_influence.GLMInfluence
+        """
+        from statsmodels.stats.outliers_influence import GLMInfluence
+
+        weights = self.model.hessian_factor(self.params, observed=observed)
+        weights_sqrt = np.sqrt(weights)
+        wexog = weights_sqrt[:, None] * self.model.exog
+        wendog = weights_sqrt * self.model.endog
+
+        # using get_hat_matrix_diag has duplicated computation
+        hat_matrix_diag = self.get_hat_matrix_diag(observed=observed)
+        infl = GLMInfluence(self, endog=wendog, exog=wexog,
+                         resid=self.resid_pearson,
+                         hat_matrix_diag=hat_matrix_diag)
+        return infl
 
     def remove_data(self):
         # GLM has alias/reference in result instance
@@ -1796,7 +1903,7 @@ wrap.populate_wrapper(GLMResultsWrapper, GLMResults)
 
 if __name__ == "__main__":
     import statsmodels.api as sm
-    data = sm.datasets.longley.load()
+    data = sm.datasets.longley.load(as_pandas=False)
     # data.exog = add_constant(data.exog)
     GLMmod = GLM(data.endog, data.exog).fit()
     GLMT = GLMmod.summary(returns='tables')
@@ -1842,7 +1949,7 @@ Log likelihood   = -76.94564525                    BIC             =  10.20398
 
     # NOTE: wfs dataset has been removed due to a licensing issue
     # example of using offset
-    # data = sm.datasets.wfs.load()
+    # data = sm.datasets.wfs.load(as_pandas=False)
     # get offset
     # offset = np.log(data.exog[:,-1])
     # exog = data.exog[:,:-1]

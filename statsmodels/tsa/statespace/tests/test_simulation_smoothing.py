@@ -5,15 +5,14 @@ Author: Chad Fulton
 License: Simplified-BSD
 """
 from __future__ import division, absolute_import, print_function
-from statsmodels.compat.testing import SkipTest
 
 import numpy as np
 import pandas as pd
+import pytest
 import os
 
 from statsmodels import datasets
 from statsmodels.tsa.statespace import mlemodel, sarimax, structural
-from statsmodels.tsa.statespace.tools import compatibility_mode
 from statsmodels.tsa.statespace.kalman_filter import (
     FILTER_CONVENTIONAL, FILTER_COLLAPSED, FILTER_UNIVARIATE)
 from statsmodels.tsa.statespace.kalman_smoother import (
@@ -21,15 +20,10 @@ from statsmodels.tsa.statespace.kalman_smoother import (
     SMOOTH_UNIVARIATE)
 from statsmodels.tsa.statespace.simulation_smoother import (
     SIMULATION_STATE, SIMULATION_DISTURBANCE, SIMULATION_ALL)
-from numpy.testing import assert_allclose, assert_almost_equal, assert_equal, assert_raises
+from numpy.testing import assert_allclose, assert_almost_equal, assert_equal
 import pytest
 
 current_path = os.path.dirname(os.path.abspath(__file__))
-
-if compatibility_mode:
-    raise SkipTest('Not testable in compatibility mode')
-    pytestmark = pytest.mark.skipif(compatibility_mode,
-                                    reason='Not testable in compatibility mode')
 
 
 class MultivariateVARKnown(object):
@@ -80,8 +74,7 @@ class MultivariateVARKnown(object):
         cls.model = mod
         cls.results = mod.smooth([], return_ssm=True)
 
-        if not compatibility_mode:
-            cls.sim = cls.model.simulation_smoother()
+        cls.sim = cls.model.simulation_smoother()
 
     def test_loglike(self):
         assert_allclose(np.sum(self.results.llf_obs), self.true_llf)
@@ -473,11 +466,11 @@ class TestDFM(TestMultivariateVARKnown):
         cls.model = mod
         cls.results = mod.smooth([], return_ssm=True)
 
-        if not compatibility_mode:
-            cls.sim = cls.model.simulation_smoother()
+        cls.sim = cls.model.simulation_smoother()
 
     def test_loglike(self):
         pass
+
 
 class MultivariateVAR(object):
     """
@@ -521,8 +514,7 @@ class MultivariateVAR(object):
         cls.model = mod
         cls.results = mod.smooth([], return_ssm=True)
 
-        if not compatibility_mode:
-            cls.sim = cls.model.simulation_smoother()
+        cls.sim = cls.model.simulation_smoother()
 
     def test_loglike(self):
         assert_allclose(np.sum(self.results.llf_obs), self.true_llf)
@@ -623,3 +615,19 @@ def test_simulation_smoothing_obs_intercept():
     sim.simulate(disturbance_variates=np.zeros(mod.nobs * 2),
                  initial_state_variates=np.zeros(1))
     assert_equal(sim.simulated_state[0], 0)
+
+
+def test_simulation_smoothing_state_intercept():
+    nobs = 10
+    intercept = 100
+    endog = np.ones(nobs) * intercept
+
+    mod = sarimax.SARIMAX(endog, order=(0, 0, 0), trend='c',
+                          measurement_error=True)
+    mod.initialize_known([100], [[0]])
+    mod.update([intercept, 1., 1.])
+
+    sim = mod.simulation_smoother()
+    sim.simulate(disturbance_variates=np.zeros(mod.nobs * 2),
+                 initial_state_variates=np.zeros(1))
+    assert_equal(sim.simulated_state[0], intercept)

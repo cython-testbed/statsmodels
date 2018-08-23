@@ -117,8 +117,9 @@ def create_update_gitdir():
         if retcode != 0:
             msg = """There was a problem cloning the repo"""
             raise Exception(msg)
-    else:  # directory exists, can't pull if you're not on a branch
-           # just delete it and clone again. Lazy but clean solution.
+    else:
+        # directory exists, can't pull if you're not on a branch
+        # just delete it and clone again. Lazy but clean solution.
         shutil.rmtree(gitdname)
         create_update_gitdir()
 
@@ -132,7 +133,7 @@ def check_version(branch, latest_hash=None):
         remote_dir = 'stable'
         regex = ("(?<=This documentation is for the <b>)(\d{1}\.\d{1}\.\d{1})"
                  "(?=</b> release.)")
-    base_url = 'http://www.statsmodels.org/{}'
+    base_url = 'https://www.statsmodels.org/{}'
     page = urlopen(base_url.format(remote_dir)).read()
 
     try:

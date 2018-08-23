@@ -21,7 +21,7 @@ from statsmodels.tools.decorators import (cache_readonly,
                                           resettable_cache)
 import statsmodels.tsa.base.tsa_model as tsbase
 import statsmodels.base.wrapper as wrap
-from statsmodels.regression.linear_model import yule_walker, GLS
+from statsmodels.regression.linear_model import yule_walker, OLS
 from statsmodels.tsa.tsatools import (lagmat, add_trend,
                                       _ar_transparams, _ar_invtransparams,
                                       _ma_transparams, _ma_invtransparams,
@@ -392,11 +392,11 @@ def _make_arma_names(data, k_trend, order, exog_names):
     # is called multiple times.
     if k_ma ==0 and k_ar ==0:
         if len(exog_names) != 0:
-          return exog_names
-    elif  (exog_names[-k_ma:] == ma_lag_names ) and \
+            return exog_names
+    elif (exog_names[-k_ma:] == ma_lag_names ) and \
            exog_names[-(k_ar+k_ma):-k_ma] == ar_lag_names and \
            (not exog_names or not trend_name or trend_name[0] == exog_names[0]):
-           return exog_names
+            return exog_names
 
     exog_names = trend_name + exog_names + ar_lag_names + ma_lag_names
     return exog_names
@@ -483,10 +483,11 @@ class ARMA(tsbase.TimeSeriesModel):
         """
         p, q, k = order
         start_params = zeros((p+q+k))
-        endog = self.endog.copy()  # copy because overwritten
+        # make copy of endog because overwritten
+        endog = np.array(self.endog, np.float64)
         exog = self.exog
         if k != 0:
-            ols_params = GLS(endog, exog).fit().params
+            ols_params = OLS(endog, exog).fit().params
             start_params[:k] = ols_params
             endog -= np.dot(exog, ols_params).squeeze()
         if q != 0:
@@ -526,7 +527,7 @@ class ARMA(tsbase.TimeSeriesModel):
                 lag_resid = lagmat(resid, q, 'both')[resid_start:]
                 # stack ar lags and resids
                 X = np.column_stack((lag_endog, lag_resid))
-                coefs = GLS(endog[max(p_tmp + q, p):], X).fit().params
+                coefs = OLS(endog[max(p_tmp + q, p):], X).fit().params
                 start_params[k:k+p+q] = coefs
             else:
                 start_params[k+p:k+p+q] = yule_walker(endog, order=q)[0]
@@ -739,7 +740,11 @@ class ARMA(tsbase.TimeSeriesModel):
         if dynamic:
             if self.k_exog > 0:
                 # need the last k_ar exog for the lag-polynomial
-                exog = np.vstack((self.exog[start - k_ar:, self.k_trend:], exog))
+                exog_insample = self.exog[start - k_ar:, self.k_trend:]
+                if exog is not None:
+                    exog = np.vstack((exog_insample, exog))
+                else:
+                    exog = exog_insample
             #TODO: now that predict does dynamic in-sample it should
             # also return error estimates and confidence intervals
             # but how? len(endog) is not tot_obs
@@ -1553,10 +1558,19 @@ class ARMAResults(tsbase.TimeSeriesModelResults):
                 exog = exog[None, :]
             if exog.shape[0] != steps:
                 raise ValueError("new exog needed for each step")
+            if self.k_exog != exog.shape[1]:
+                raise ValueError('exog must contain the same number of '
+                                 'variables as in the estimated model.')
             # prepend in-sample exog observations
             if self.k_ar > 0:
                 exog = np.vstack((self.model.exog[-self.k_ar:, self.k_trend:],
                                   exog))
+        else:
+            if self.k_exog:
+                raise ValueError('Forecast values for exog are required when '
+                                 'the model contains exogenous regressors.')
+
+
 
         forecast = _arma_predict_out_of_sample(self.params,
                                                steps, self.resid, self.k_ar,
@@ -1656,15 +1670,16 @@ class ARMAResults(tsbase.TimeSeriesModelResults):
         if len(stubs):  # not 0, 0
             modulus = np.abs(roots)
             data = np.column_stack((roots.real, roots.imag, modulus, freq))
-            roots_table = SimpleTable(data,
-                                      headers=['           Real',
+            roots_table = SimpleTable([('%17.4f' % row[0],
+                                        '%+17.4fj' % row[1],
+                                        '%17.4f' % row[2],
+                                        '%17.4f' % row[3]) for row in data],
+                                      headers=['            Real',
                                                '         Imaginary',
                                                '         Modulus',
                                                '        Frequency'],
                                       title="Roots",
-                                      stubs=stubs,
-                                      data_fmts=["%17.4f", "%+17.4fj",
-                                                 "%17.4f", "%17.4f"])
+                                      stubs=stubs)
 
             smry.tables.append(roots_table)
         return smry
@@ -1766,7 +1781,6 @@ class ARMAResults(tsbase.TimeSeriesModelResults):
         _ = _import_mpl()
         fig, ax = create_mpl_ax(ax)
 
-
         # use predict so you set dates
         forecast = self.predict(start, end, exog, dynamic)
         # doing this twice. just add a plot keyword to predict?
@@ -1778,7 +1792,6 @@ class ARMAResults(tsbase.TimeSeriesModelResults):
             fc_error = self._forecast_error(steps)
             conf_int = self._forecast_conf_int(forecast[-steps:], fc_error,
                                                alpha)
-
 
         if hasattr(self.data, "predict_dates"):
             from pandas import Series
@@ -1810,7 +1823,7 @@ class ARMAResultsWrapper(wrap.ResultsWrapper):
     _methods = {}
     _wrap_methods = wrap.union_dicts(tsbase.TimeSeriesResultsWrapper._wrap_methods,
                                      _methods)
-wrap.populate_wrapper(ARMAResultsWrapper, ARMAResults)
+wrap.populate_wrapper(ARMAResultsWrapper, ARMAResults)  # noqa:E305
 
 
 class ARIMAResults(ARMAResults):
@@ -1867,10 +1880,18 @@ class ARIMAResults(ARMAResults):
                 exog = exog[:, None]
             if exog.shape[0] != steps:
                 raise ValueError("new exog needed for each step")
+            if self.k_exog != exog.shape[1]:
+                raise ValueError('exog must contain the same number of '
+                                 'variables as in the estimated model.')
             # prepend in-sample exog observations
             if self.k_ar > 0:
                 exog = np.vstack((self.model.exog[-self.k_ar:, self.k_trend:],
                                   exog))
+        else:
+            if self.k_exog:
+                raise ValueError('Forecast values for exog are required when '
+                                 'the model contains exogenous regressors.')
+
         forecast = _arma_predict_out_of_sample(self.params, steps, self.resid,
                                                self.k_ar, self.k_ma,
                                                self.k_trend, self.k_exog,
@@ -1935,7 +1956,7 @@ class ARIMAResults(ARMAResults):
 
 class ARIMAResultsWrapper(ARMAResultsWrapper):
     pass
-wrap.populate_wrapper(ARIMAResultsWrapper, ARIMAResults)
+wrap.populate_wrapper(ARIMAResultsWrapper, ARIMAResults)  # noqa:E305
 
 
 if __name__ == "__main__":
@@ -1957,7 +1978,7 @@ if __name__ == "__main__":
     arma22_css = ARMA(y_arma22)
     res22css = arma22_css.fit(trend='nc', order=(2, 2), method='css')
 
-    data = sm.datasets.sunspots.load()
+    data = sm.datasets.sunspots.load(as_pandas=False)
     ar = ARMA(data.endog)
     resar = ar.fit(trend='nc', order=(9, 0))
 

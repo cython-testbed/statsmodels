@@ -222,8 +222,8 @@ class Summary(object):
         'end{tabular}\\n\\\\begin{tabular}{.*}\\n')
 
         if self._merge_latex:
-             # create single tabular object for summary_col
-            tab = re.sub(to_replace,'\midrule\n\midrule\n', tab)
+            # create single tabular object for summary_col
+            tab = re.sub(to_replace,r'\\midrule\n\\midrule\n', tab)
 
         out = '\\begin{table}', title, tab, '\\end{table}'
         out = '\n'.join(out)
@@ -360,7 +360,10 @@ def summary_params(results, yname=None, xname=None, alpha=.05, use_t=True,
                         '[' + str(alpha/2), str(1-alpha/2) + ']']
 
     if not xname:
-        data.index = results.model.exog_names
+        try:
+            data.index = results.model.data.param_names
+        except AttributeError:
+            data.index = results.model.exog_names
     else:
         data.index = xname
 

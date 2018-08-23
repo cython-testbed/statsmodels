@@ -41,8 +41,7 @@ except ImportError:
     _have_setuptools = False
 
 if _have_setuptools:
-    setuptools_kwargs = {"zip_safe": False,
-                         "test_suite": "nose.collector"}
+    setuptools_kwargs = {"zip_safe": False}
 else:
     setuptools_kwargs = {}
     if sys.version_info[0] >= 3:
@@ -56,9 +55,9 @@ CYTHON_EXCLUSION_FILE = 'cythonize_exclusions.dat'
 DISTNAME = 'statsmodels'
 DESCRIPTION = 'Statistical computations and models for Python'
 LONG_DESCRIPTION = README
-MAINTAINER = 'Skipper Seabold, Josef Perktold'
-MAINTAINER_EMAIL ='pystatsmodels@googlegroups.com'
-URL = 'http://www.statsmodels.org/'
+MAINTAINER = 'Josef Perktold, Chad Fulton, Kerby Shedden'
+MAINTAINER_EMAIL = 'pystatsmodels@googlegroups.com'
+URL = 'https://www.statsmodels.org/'
 LICENSE = 'BSD License'
 DOWNLOAD_URL = ''
 
@@ -134,6 +133,7 @@ def check_dependency_versions(min_versions):
     try:
         import scipy
     except ImportError:
+        setup_requires.append('scipy')
         install_requires.append('scipy')
     else:
         try:
@@ -168,7 +168,7 @@ def check_dependency_versions(min_versions):
 
 
 MAJ = 0
-MIN = 8
+MIN = 10
 REV = 0
 ISRELEASED = False
 VERSION = '%d.%d.%d' % (MAJ,MIN,REV)
@@ -176,17 +176,18 @@ VERSION = '%d.%d.%d' % (MAJ,MIN,REV)
 classifiers = ['Development Status :: 4 - Beta',
                'Environment :: Console',
                'Programming Language :: Cython',
-               'Programming Language :: Python :: 2.6',
                'Programming Language :: Python :: 2.7',
                'Programming Language :: Python :: 3.3',
                'Programming Language :: Python :: 3.4',
                'Programming Language :: Python :: 3.5',
+               'Programming Language :: Python :: 3.6',
                'Operating System :: OS Independent',
                'Intended Audience :: End Users/Desktop',
                'Intended Audience :: Developers',
                'Intended Audience :: Science/Research',
                'Natural Language :: English',
                'License :: OSI Approved :: BSD License',
+               'Topic :: Office/Business :: Financial',
                'Topic :: Scientific/Engineering']
 
 # Return the git revision as a string
@@ -362,21 +363,23 @@ ext_data = dict(
               "depends" : [],
               "include_dirs": [],
               "sources" : []},
-    _statespace = {"name" : "statsmodels/tsa/statespace/_statespace.c",
-              "depends" : ["statsmodels/src/capsule.h"],
-              "include_dirs": ["statsmodels/src"] + npymath_info['include_dirs'],
-              "libraries": npymath_info['libraries'],
-              "library_dirs": npymath_info['library_dirs'],
-              "sources" : []},
     linbin = {"name" : "statsmodels/nonparametric/linbin.c",
              "depends" : [],
              "sources" : []},
     _smoothers_lowess = {"name" : "statsmodels/nonparametric/_smoothers_lowess.c",
              "depends" : [],
-             "sources" : []}
-    )
+             "sources" : []},
+    _exponential_smoothers = {"name": "statsmodels/tsa/_exponential_smoothers.c",
+                              "depends": [],
+                              "sources": []}
+)
 
 statespace_ext_data = dict(
+    _initialization = {"name" : "statsmodels/tsa/statespace/_initialization.c",
+              "include_dirs": ['statsmodels/src'] + npymath_info['include_dirs'],
+              "libraries": npymath_info['libraries'],
+              "library_dirs": npymath_info['library_dirs'],
+              "sources": []},
     _representation = {"name" : "statsmodels/tsa/statespace/_representation.c",
               "include_dirs": ['statsmodels/src'] + npymath_info['include_dirs'],
               "libraries": npymath_info['libraries'],
@@ -401,6 +404,12 @@ statespace_ext_data = dict(
               "sources": []},
     _kalman_filter_univariate = {"name" : "statsmodels/tsa/statespace/_filters/_univariate.c",
               "filename": "_univariate",
+              "include_dirs": ['statsmodels/src'] + npymath_info['include_dirs'],
+              "libraries": npymath_info['libraries'],
+              "library_dirs": npymath_info['library_dirs'],
+              "sources": []},
+    _kalman_filter_univariate_diffuse = {"name" : "statsmodels/tsa/statespace/_filters/_univariate_diffuse.c",
+              "filename": "_univariate_diffuse",
               "include_dirs": ['statsmodels/src'] + npymath_info['include_dirs'],
               "libraries": npymath_info['libraries'],
               "library_dirs": npymath_info['library_dirs'],
@@ -434,6 +443,12 @@ statespace_ext_data = dict(
               "libraries": npymath_info['libraries'],
               "library_dirs": npymath_info['library_dirs'],
               "sources": []},
+    _kalman_smoother_univariate_diffuse = {"name" : "statsmodels/tsa/statespace/_smoothers/_univariate_diffuse.c",
+              "filename": "_univariate_diffuse",
+              "include_dirs": ['statsmodels/src'] + npymath_info['include_dirs'],
+              "libraries": npymath_info['libraries'],
+              "library_dirs": npymath_info['library_dirs'],
+              "sources": []},
     _kalman_simulation_smoother = {"name" : "statsmodels/tsa/statespace/_simulation_smoother.c",
               "filename": "_simulation_smoother",
               "include_dirs": ['statsmodels/src'] + npymath_info['include_dirs'],
@@ -444,14 +459,7 @@ statespace_ext_data = dict(
               "filename": "_tools",
               "sources": []},
 )
-try:
-    from scipy.linalg import cython_blas
-    ext_data.update(statespace_ext_data)
-except ImportError:
-    for name, data in statespace_ext_data.items():
-        path = '.'.join([data["name"].split('.')[0], 'pyx.in'])
-        append_cython_exclusion(path.replace('/', os.path.sep),
-                                CYTHON_EXCLUSION_FILE)
+ext_data.update(statespace_ext_data)
 
 extensions = []
 for name, data in ext_data.items():
@@ -495,14 +503,12 @@ if __name__ == "__main__":
         os.unlink('MANIFEST')
 
     min_versions = {
-        'numpy' : '1.6.2',
-        'scipy' : '0.11',
-        'pandas' : '0.13',
-        'patsy' : '0.2.1',
+        'numpy' : '1.11',   # released March 2016
+        'scipy' : '0.18',   # released July 2016
+        'pandas' : '0.19',  # released October 2016
+        'patsy' : '0.4.0',  # released July 2015
+        # 'matplotlib': '1.5.0',   #  released October 2015
                    }
-    if sys.version_info[0] == 3 and sys.version_info[1] >= 3:
-        # 3.3 needs numpy 1.7+
-        min_versions.update({"numpy" : "1.7.0"})
 
     (setup_requires,
      install_requires) = check_dependency_versions(min_versions)
@@ -544,13 +550,13 @@ if __name__ == "__main__":
     if not os.path.exists(os.path.join(cwd, 'PKG-INFO')) and not no_frills:
         # Generate Cython sources, unless building from source release
         generate_cython()
-    extras = {'docs': ['sphinx>=1.3.5',
-                       'nbconvert>=4.2.0',
+    extras = {'docs': ['sphinx',
+                       'nbconvert',
                        'jupyter_client',
                        'ipykernel',
                        'matplotlib',
-                       'nbformat>=4.0.1',
-                       'numpydoc>=0.6.0',
+                       'nbformat',
+                       'numpydoc',
                        'pandas-datareader']}
 
     setup(name = DISTNAME,

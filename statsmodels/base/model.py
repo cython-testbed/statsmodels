@@ -5,7 +5,8 @@ from scipy import stats
 from statsmodels.base.data import handle_data
 from statsmodels.tools.data import _is_using_pandas
 from statsmodels.tools.tools import recipr, nan_dot
-from statsmodels.stats.contrast import ContrastResults, WaldTestResults
+from statsmodels.stats.contrast import (ContrastResults, WaldTestResults,
+                                        t_test_pairwise)
 from statsmodels.tools.decorators import resettable_cache, cache_readonly
 import statsmodels.base.wrapper as wrap
 from statsmodels.tools.numdiff import approx_fprime
@@ -164,7 +165,7 @@ class Model(object):
                         cols.remove(col)
                     except ValueError:
                         pass  # OK if not present
-                design_info = design_info.builder.subset(cols).design_info
+                design_info = design_info.subset(cols).design_info
 
         kwargs.update({'missing_idx': missing_idx,
                        'missing': missing,
@@ -509,6 +510,167 @@ class LikelihoodModel(Model):
         mlefit.mle_settings = optim_settings
         return mlefit
 
+    def _fit_zeros(self, keep_index=None, start_params=None,
+                   return_auxiliary=False, k_params=None, **fit_kwds):
+        """experimental, fit the model subject to zero constraints
+
+        Intended for internal use cases until we know what we need.
+        API will need to change to handle models with two exog.
+        This is not yet supported by all model subclasses.
+
+        This is essentially a simplified version of `fit_constrained`, and
+        does not need to use `offset`.
+
+        The estimation creates a new model with transformed design matrix,
+        exog, and converts the results back to the original parameterization.
+
+        Some subclasses could use a more efficient calculation than using a
+        new model.
+
+        Parameters
+        ----------
+        keep_index : array_like (int or bool) or slice
+            variables that should be dropped.
+        start_params : None or array_like
+            starting values for the optimization. `start_params` needs to be
+            given in the original parameter space and are internally
+            transformed.
+        k_params : int or None
+            If None, then we try to infer from start_params or model.
+        **fit_kwds : keyword arguments
+            fit_kwds are used in the optimization of the transformed model.
+
+        Returns
+        -------
+        results : Results instance
+
+        """
+        # we need to append index of extra params to keep_index as in
+        # NegativeBinomial
+        if hasattr(self, 'k_extra') and self.k_extra > 0:
+            # we cannot change the original, TODO: should we add keep_index_params?
+            keep_index = np.array(keep_index, copy=True)
+            k = self.exog.shape[1]
+            extra_index = np.arange(k, k + self.k_extra)
+            keep_index_p = np.concatenate((keep_index, extra_index))
+        else:
+            keep_index_p = keep_index
+
+        # not all models support start_params, drop if None, hide them in fit_kwds
+        if start_params is not None:
+            fit_kwds['start_params'] = start_params[keep_index_p]
+            k_params = len(start_params)
+            # ignore k_params in this case, or verify consisteny?
+
+        # build auxiliary model and fit
+        init_kwds = self._get_init_kwds()
+        mod_constr = self.__class__(self.endog, self.exog[:, keep_index],
+                                    **init_kwds)
+        res_constr = mod_constr.fit(**fit_kwds)
+        # switch name, only need keep_index for params below
+        keep_index = keep_index_p
+
+        if k_params is None:
+            k_params = self.exog.shape[1]
+            k_params += getattr(self, 'k_extra', 0)
+
+        params_full = np.zeros(k_params)
+        params_full[keep_index] = res_constr.params
+
+        # create dummy results Instance, TODO: wire up properly
+        # TODO: this could be moved into separate private method if needed
+        # discrete L1 fit_regularized doens't reestimate AFAICS
+        # RLM doesn't have method, disp nor warn_convergence keywords
+        # OLS, WLS swallows extra kwds with **kwargs, but doesn't have method='nm'
+        try:
+            # Note: addding full_output=False causes exceptions
+            res = self.fit(maxiter=0, disp=0, method='nm', skip_hessian=True,
+                           warn_convergence=False, start_params=params_full)
+            # we get a wrapper back
+        except (TypeError, ValueError):
+            res = self.fit()
+
+        # Warning: make sure we are not just changing the wrapper instead of
+        # results #2400
+        # TODO: do we need to change res._results.scale in some models?
+        if hasattr(res_constr.model, 'scale'):
+            # Note: res.model is self
+            # GLM problem, see #2399,
+            # TODO: remove from model if not needed anymore
+            res.model.scale = res._results.scale = res_constr.model.scale
+
+        if hasattr(res_constr, 'mle_retvals'):
+            res._results.mle_retvals = res_constr.mle_retvals
+            # not available for not scipy optimization, e.g. glm irls
+            # TODO: what retvals should be required?
+            # res.mle_retvals['fcall'] = res_constr.mle_retvals.get('fcall', np.nan)
+            # res.mle_retvals['iterations'] = res_constr.mle_retvals.get(
+            #                                                 'iterations', np.nan)
+            # res.mle_retvals['converged'] = res_constr.mle_retvals['converged']
+        # overwrite all mle_settings
+        if hasattr(res_constr, 'mle_settings'):
+            res._results.mle_settings = res_constr.mle_settings
+
+        res._results.params = params_full
+        if (not hasattr(res._results, 'normalized_cov_param') or
+                res._results.normalized_cov_param is None):
+            res._results.normalized_cov_params = np.zeros((k_params, k_params))
+        else:
+            res._results.normalized_cov_params[...] = 0
+
+        # fancy indexing requires integer array
+        keep_index = np.array(keep_index)
+        res._results.normalized_cov_params[keep_index[:, None], keep_index] = \
+            res_constr.normalized_cov_params
+        k_constr = res_constr.df_resid - res._results.df_resid
+        if hasattr(res_constr, 'cov_params_default'):
+            res._results.cov_params_default = np.zeros((k_params, k_params))
+            res._results.cov_params_default[keep_index[:, None], keep_index] = \
+                res_constr.cov_params_default
+        if hasattr(res_constr, 'cov_type'):
+            res._results.cov_type = res_constr.cov_type
+            res._results.cov_kwds = res_constr.cov_kwds
+
+        res._results.keep_index = keep_index
+        res._results.df_resid = res_constr.df_resid
+        res._results.df_model = res_constr.df_model
+
+        res._results.k_constr = k_constr
+        res._results.results_constrained = res_constr
+
+        # special temporary workaround for RLM
+        # need to be able to override robust covariances
+        if hasattr(res.model, 'M'):
+            del res._results._cache['resid']
+            del res._results._cache['fittedvalues']
+            del res._results._cache['sresid']
+            cov = res._results._cache['bcov_scaled']
+            # inplace adjustment
+            cov[...] = 0
+            cov[keep_index[:, None], keep_index] = res_constr.bcov_scaled
+            res._results.cov_params_default = cov
+
+        return res
+
+    def _fit_collinear(self, atol=1e-14, rtol=1e-13, **kwds):
+        """experimental, fit of the model without collinear variables
+
+        This currently uses QR to drop variables based on the given
+        sequence.
+        Options will be added in future, when the supporting functions
+        to identify collinear variables become available.
+        """
+
+        # ------ copied from PR #2380 remove when merged
+        x = self.exog
+        tol = atol + rtol * x.var(0)
+        r = np.linalg.qr(x, mode='r')
+        mask = np.abs(r.diagonal()) < np.sqrt(tol)
+        # TODO add to results instance
+        # idx_collinear = np.where(mask)[0]
+        idx_keep = np.where(~mask)[0]
+        return self._fit_zeros(keep_index=idx_keep, **kwds)
+
 
 # TODO: the below is unfinished
 class GenericLikelihoodModel(LikelihoodModel):
@@ -544,7 +706,7 @@ class GenericLikelihoodModel(LikelihoodModel):
     see also subclasses in directory miscmodels
 
     import statsmodels.api as sm
-    data = sm.datasets.spector.load()
+    data = sm.datasets.spector.load(as_pandas=False)
     data.exog = sm.add_constant(data.exog)
     # in this dir
     from model import GenericLikelihoodModel
@@ -776,7 +938,7 @@ class Results(object):
         Parameters
         ----------
         exog : array-like, optional
-            The values for which you want to predict.
+            The values for which you want to predict. see Notes below.
         transform : bool, optional
             If the model was fit via a formula, do you want to pass
             exog through the formula. Default is True. E.g., if you fit
@@ -793,25 +955,53 @@ class Results(object):
         prediction : ndarray, pandas.Series or pandas.DataFrame
             See self.model.predict
 
+        Notes
+        -----
+        The types of exog that are supported depends on whether a formula
+        was used in the specification of the model.
+
+        If a formula was used, then exog is processed in the same way as
+        the original data. This transformation needs to have key access to the
+        same variable names, and can be a pandas DataFrame or a dict like
+        object.
+
+        If no formula was used, then the provided exog needs to have the
+        same number of columns as the original exog in the model. No
+        transformation of the data is performed except converting it to
+        a numpy array.
+
+        Row indices as in pandas data frames are supported, and added to the
+        returned prediction.
+
         """
         import pandas as pd
 
-        exog_index = exog.index if _is_using_pandas(exog, None) else None
+        is_pandas = _is_using_pandas(exog, None)
 
-        if transform and hasattr(self.model, 'formula') and exog is not None:
+        exog_index = exog.index if is_pandas else None
+
+        if transform and hasattr(self.model, 'formula') and (exog is not None):
+            design_info = self.model.data.design_info
             from patsy import dmatrix
-            exog = pd.DataFrame(exog)  # user may pass series, if one predictor
-            if exog_index is None:  # user passed in a dictionary
-                exog_index = exog.index
-            exog = dmatrix(self.model.data.design_info.builder,
-                           exog, return_type="dataframe")
-            if len(exog) < len(exog_index):
-                # missing values, rows have been dropped
-                if exog_index is not None:
-                    exog = exog.reindex(exog_index)
+            if isinstance(exog, pd.Series):
+                # we are guessing whether it should be column or row
+                if (hasattr(exog, 'name') and isinstance(exog.name, str) and
+                        exog.name in design_info.describe()):
+                    # assume we need one column
+                    exog = pd.DataFrame(exog)
                 else:
-                    import warnings
-                    warnings.warn("nan rows have been dropped", ValueWarning)
+                    # assume we need a row
+                    exog = pd.DataFrame(exog).T
+            orig_exog_len = len(exog)
+            is_dict = isinstance(exog, dict)
+            exog = dmatrix(design_info, exog, return_type="dataframe")
+            if orig_exog_len > len(exog) and not is_dict:
+                import warnings
+                if exog_index is None:
+                    warnings.warn('nan values have been dropped', ValueWarning)
+                else:
+                    exog = exog.reindex(exog_index)
+            exog_index = exog.index
 
         if exog is not None:
             exog = np.asarray(exog)
@@ -820,17 +1010,16 @@ class Results(object):
                 exog = exog[:, None]
             exog = np.atleast_2d(exog)  # needed in count model shape[1]
 
-        predict_results = self.model.predict(self.params, exog, *args, **kwargs)
+        predict_results = self.model.predict(self.params, exog, *args,
+                                             **kwargs)
 
-        if exog_index is not None and not hasattr(predict_results, 'predicted_values'):
-
+        if exog_index is not None and not hasattr(predict_results,
+                                                  'predicted_values'):
             if predict_results.ndim == 1:
                 return pd.Series(predict_results, index=exog_index)
             else:
                 return pd.DataFrame(predict_results, index=exog_index)
-
         else:
-
             return predict_results
 
     def summary(self):
@@ -1209,7 +1398,7 @@ class LikelihoodModelResults(Results):
         --------
         >>> import numpy as np
         >>> import statsmodels.api as sm
-        >>> data = sm.datasets.longley.load()
+        >>> data = sm.datasets.longley.load(as_pandas=False)
         >>> data.exog = sm.add_constant(data.exog)
         >>> results = sm.OLS(data.endog, data.exog).fit()
         >>> r = np.zeros_like(results.params)
@@ -1346,7 +1535,7 @@ class LikelihoodModelResults(Results):
         --------
         >>> import numpy as np
         >>> import statsmodels.api as sm
-        >>> data = sm.datasets.longley.load()
+        >>> data = sm.datasets.longley.load(as_pandas=False)
         >>> data.exog = sm.add_constant(data.exog)
         >>> results = sm.OLS(data.endog, data.exog).fit()
         >>> A = np.identity(len(results.params))
@@ -1476,6 +1665,7 @@ class LikelihoodModelResults(Results):
 
         cparams = np.dot(r_matrix, self.params[:, None])
         J = float(r_matrix.shape[0])  # number of restrictions
+
         if q_matrix is None:
             q_matrix = np.zeros(J)
         else:
@@ -1492,7 +1682,15 @@ class LikelihoodModelResults(Results):
                 raise ValueError("r_matrix performs f_test for using "
                                  "dimensions that are asymptotically "
                                  "non-normal")
-            invcov = np.linalg.inv(cov_p)
+            invcov = np.linalg.pinv(cov_p)
+            J_ = np.linalg.matrix_rank(cov_p)
+            if J_ < J:
+                import warnings
+                from statsmodels.tools.sm_exceptions import ValueWarning
+                warnings.warn('covariance of constraints does not have full '
+                              'rank. The number of constraints is %d, but '
+                              'rank is %d' % (J, J_), ValueWarning)
+                J = J_
 
         if (hasattr(self, 'mle_settings') and
                 self.mle_settings['optimizer'] in ['l1', 'l1_cvxopt_cp']):
@@ -1504,7 +1702,7 @@ class LikelihoodModelResults(Results):
         if use_f:
             F /= J
             return ContrastResults(F=F, df_denom=df_resid,
-                                   df_num=invcov.shape[0])
+                                   df_num=J) #invcov.shape[0])
         else:
             return ContrastResults(chi2=F, df_denom=J, statistic=F,
                                    distribution='chi2', distargs=(J,))
@@ -1645,6 +1843,68 @@ class LikelihoodModelResults(Results):
         res.temp = constraints + combined_constraints + extra_constraints
         return res
 
+    def t_test_pairwise(self, term_name, method='hs', alpha=0.05,
+                        factor_labels=None):
+        """perform pairwise t_test with multiple testing corrected p-values
+
+        This uses the formula design_info encoding contrast matrix and should
+        work for all encodings of a main effect.
+
+        Parameters
+        ----------
+        result : result instance
+            The results of an estimated model with a categorical main effect.
+        term_name : str
+            name of the term for which pairwise comparisons are computed.
+            Term names for categorical effects are created by patsy and
+            correspond to the main part of the exog names.
+        method : str or list of strings
+            multiple testing p-value correction, default is 'hs',
+            see stats.multipletesting
+        alpha : float
+            significance level for multiple testing reject decision.
+        factor_labels : None, list of str
+            Labels for the factor levels used for pairwise labels. If not
+            provided, then the labels from the formula design_info are used.
+
+        Returns
+        -------
+        results : instance of a simple Results class
+            The results are stored as attributes, the main attributes are the
+            following two. Other attributes are added for debugging purposes
+            or as background information.
+
+            - result_frame : pandas DataFrame with t_test results and multiple
+              testing corrected p-values.
+            - contrasts : matrix of constraints of the null hypothesis in the
+              t_test.
+
+        Notes
+        -----
+        Status: experimental. Currently only checked for treatment coding with
+        and without specified reference level.
+
+        Currently there are no multiple testing corrected confidence intervals
+        available.
+
+        Examples
+        --------
+        >>> res = ols("np.log(Days+1) ~ C(Weight) + C(Duration)", data).fit()
+        >>> pw = res.t_test_pairwise("C(Weight)")
+        >>> pw.result_frame
+                 coef   std err         t         P>|t|  Conf. Int. Low
+        2-1  0.632315  0.230003  2.749157  8.028083e-03        0.171563
+        3-1  1.302555  0.230003  5.663201  5.331513e-07        0.841803
+        3-2  0.670240  0.230003  2.914044  5.119126e-03        0.209488
+             Conf. Int. Upp.  pvalue-hs reject-hs
+        2-1         1.093067   0.010212      True
+        3-1         1.763307   0.000002      True
+        3-2         1.130992   0.010212      True
+        """
+        res = t_test_pairwise(self, term_name, method=method, alpha=alpha,
+                              factor_labels=factor_labels)
+        return res
+
     def conf_int(self, alpha=.05, cols=None, method='default'):
         """
         Returns the confidence interval of the fitted parameters.
@@ -1677,7 +1937,7 @@ class LikelihoodModelResults(Results):
         Examples
         --------
         >>> import statsmodels.api as sm
-        >>> data = sm.datasets.longley.load()
+        >>> data = sm.datasets.longley.load(as_pandas=False)
         >>> data.exog = sm.add_constant(data.exog)
         >>> results = sm.OLS(data.endog, data.exog).fit()
         >>> results.conf_int()

@@ -15,7 +15,6 @@ import warnings
 from statsmodels.tsa.statespace import (sarimax, varmax, kalman_filter,
                                         kalman_smoother)
 from statsmodels.tsa.statespace.mlemodel import MLEModel, MLEResultsWrapper
-from statsmodels.tsa.statespace.tools import compatibility_mode
 from statsmodels.datasets import nile
 from numpy.testing import assert_almost_equal, assert_equal, assert_allclose, assert_raises
 from statsmodels.tsa.statespace.tests.results import results_sarimax, results_var_misc
@@ -96,27 +95,24 @@ def test_wrapping():
     # initialize_known, initialize_stationary, initialize_approximate_diffuse
 
     # Initialization starts off as none
-    assert_equal(mod.initialization, None)
+    assert_equal(isinstance(mod.initialization, object), True)
 
     # Since the SARIMAX model may be fully stationary or may have diffuse
     # elements, it uses a custom initialization by default, but it can be
     # overridden by users
-    mod.initialize_state()
-    # (The default initialization in this case is known because there is a non-
-    # stationary state corresponding to the time-varying regression parameter)
-    assert_equal(mod.initialization, 'known')
+    mod.initialize_default()  # no-op here
 
     mod.initialize_approximate_diffuse(1e5)
-    assert_equal(mod.initialization, 'approximate_diffuse')
-    assert_equal(mod.ssm._initial_variance, 1e5)
+    assert_equal(mod.initialization.initialization_type, 'approximate_diffuse')
+    assert_equal(mod.initialization.approximate_diffuse_variance, 1e5)
 
     mod.initialize_known([5.], [[40]])
-    assert_equal(mod.initialization, 'known')
-    assert_equal(mod.ssm._initial_state, [5.])
-    assert_equal(mod.ssm._initial_state_cov, [[40]])
+    assert_equal(mod.initialization.initialization_type, 'known')
+    assert_equal(mod.initialization.constant, [5.])
+    assert_equal(mod.initialization.stationary_cov, [[40]])
 
     mod.initialize_stationary()
-    assert_equal(mod.initialization, 'stationary')
+    assert_equal(mod.initialization.initialization_type, 'stationary')
 
     # Test that we can use the following wrapper methods: set_filter_method,
     # set_stability_method, set_conserve_memory, set_smoother_output
@@ -138,17 +134,13 @@ def test_wrapping():
     # transferring)
 
     # Change the attributes in the model class
-    if compatibility_mode:
-        assert_raises(NotImplementedError, mod.set_filter_method, 100)
-    else:
-        mod.set_filter_method(100)
+    mod.set_filter_method(100)
     mod.set_stability_method(101)
     mod.set_conserve_memory(102)
     mod.set_smoother_output(103)
 
     # Assert that the changes have occurred in the ssm class
-    if not compatibility_mode:
-        assert_equal(mod.ssm.filter_method, 100)
+    assert_equal(mod.ssm.filter_method, 100)
     assert_equal(mod.ssm.stability_method, 101)
     assert_equal(mod.ssm.conserve_memory, 102)
     assert_equal(mod.ssm.smoother_output, 103)
@@ -157,15 +149,6 @@ def test_wrapping():
     assert_equal(kf.filter_method, kalman_filter.FILTER_CONVENTIONAL)
     assert_equal(kf.stability_method, kalman_filter.STABILITY_FORCE_SYMMETRY)
     assert_equal(kf.conserve_memory, kalman_filter.MEMORY_STORE_ALL)
-
-    # Re-initialize the filter object (this would happen automatically anytime
-    # loglike, filter, etc. were called)
-    # In this case, an error will be raised since filter_method=100 is not
-    # valid
-    # Note: this error is only raised in the compatibility case, since the
-    # newer filter logic checks for a valid filter mode at a different point
-    if compatibility_mode:
-        assert_raises(NotImplementedError, mod.ssm._initialize_filter)
 
     # Now, test the setting of the other two methods by resetting the
     # filter method to a valid value
@@ -305,6 +288,7 @@ def test_score_analytic_ar1():
     # Check the Hessian: these approximations are not very good, particularly
     # when phi is close to 0
     params = np.r_[0.5, 1.]
+
     def hessian(phi, sigma2):
         hessian = np.zeros((2,2))
         hessian[0,0] = (-phi**2 - 1) / (phi**2 - 1)**2
@@ -522,6 +506,7 @@ def check_endog(endog, nobs=2, k_endog=1, **kwargs):
 
     return mod
 
+
 def test_basic_endog():
     # Test various types of basic python endog inputs (e.g. lists, scalars...)
 
@@ -560,6 +545,7 @@ def test_basic_endog():
     endog = (1.,2.)
     mod = check_endog(endog, **kwargs)
     mod.filter([])
+
 
 def test_numpy_endog():
     # Test various types of numpy endog inputs
@@ -653,6 +639,7 @@ def test_numpy_endog():
     mod = check_endog(endog, k_endog=2, **kwargs2)
     mod.filter([])
 
+
 def test_pandas_endog():
     # Test various types of pandas endog inputs (e.g. TimeSeries, etc.)
 
@@ -669,7 +656,7 @@ def test_pandas_endog():
     mod.filter([])
 
     # Example : pandas.Series, string datatype
-    endog = pd.Series(['a'], index=dates)
+    endog = pd.Series(['a', 'b'], index=dates)
     # raises error due to direct type casting check in Statsmodels base classes
     assert_raises(ValueError, check_endog, endog, **kwargs)
 
@@ -713,6 +700,7 @@ def test_pandas_endog():
     mod = check_endog(endog, k_endog=2, **kwargs2)
     mod.filter([])
 
+
 def test_diagnostics():
     mod, res = get_dummy_mod()
 
@@ -746,6 +734,7 @@ def test_diagnostics():
     actual = res.test_heteroskedasticity(method=None, alternative='d', use_f=False)
     desired = res.test_serial_correlation(method='boxpierce')
 
+
 def test_diagnostics_nile_eviews():
     # Test the diagnostic tests using the Nile dataset. Results are from 
     # "Fitting State Space Models with EViews" (Van den Bossche 2011,
@@ -774,6 +763,7 @@ def test_diagnostics_nile_eviews():
     # Test Jarque-Bera
     actual = res.test_normality(method='jarquebera')[0, :2]
     assert_allclose(actual, [0.041686, 0.979373], atol=1e-5)
+
 
 def test_diagnostics_nile_durbinkoopman():
     # Test the diagnostic tests using the Nile dataset. Results are from 
@@ -808,6 +798,7 @@ def test_diagnostics_nile_durbinkoopman():
     # Note: only 2 digits provided in the book
     actual = res.test_heteroskedasticity(method='breakvar')[0, 0]
     assert_allclose(actual, [0.61], atol=1e-2)
+
 
 def test_prediction_results():
     # Just smoke tests for the PredictionResults class, which is copied from
