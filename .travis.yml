@@ -119,7 +119,7 @@ before_install:
   - conda create --yes --quiet -n statsmodels-test python=${PYTHON} ${BLAS} ${PKGS} ${OPTIONAL} pyyaml joblib
   - source activate statsmodels-test
   - if [ ${COVERAGE} = true ]; then pip install coverage coveralls; fi
-  - pip install --install-option="--no-cython-compile" https://github.com/cython/cython/archive/98bef7ce50b1883493fc10c2040c83b1ce94ed65.zip
+  - pip install --install-option="--no-cython-compile" https://github.com/cython/cython/archive/1834457912db7c810eb74dad41ee51241c4d0261.zip
   - pip install 'pytest<4' pytest-xdist nose
   - if [ ${COVERAGE} = true ]; then pip install codecov coverage coveralls pytest-cov; fi
   - if [ ${DOCBUILD} = true ]; then bash tools/ci_docbuild_install.sh; fi;
