@@ -3,6 +3,7 @@
 '''
 from statsmodels.compat.python import zip
 
+import pytest
 import numpy as np
 from numpy.testing import (assert_array_almost_equal, assert_equal,
     assert_raises, assert_array_equal)
@@ -24,9 +25,9 @@ x1000 = xo / 1000.
 
 
 def test_acf():
-    acf_x = tsa.acf(x100, unbiased=False)[:21]
+    acf_x = tsa.acf(x100, unbiased=False, fft=False)[:21]
     assert_array_almost_equal(mlacf.acf100.ravel(), acf_x, 8)  # why only dec=8
-    acf_x = tsa.acf(x1000, unbiased=False)[:21]
+    acf_x = tsa.acf(x1000, unbiased=False, fft=False)[:21]
     assert_array_almost_equal(mlacf.acf1000.ravel(), acf_x, 8)  # why only dec=9
 
 
@@ -653,12 +654,9 @@ class TestLagmat2DS(object):
 
     def test_3d_error(self):
         data = np.array(2)
-        assert_raises(TypeError, sm.tsa.lagmat2ds, data, 5)
+        with pytest.raises(ValueError):
+            sm.tsa.lagmat2ds(data, 5)
 
-        data = np.zeros((100,2,2))
-        assert_raises(TypeError, sm.tsa.lagmat2ds, data, 5)
-
-
-if __name__ == '__main__':
-    import pytest
-    pytest.main([__file__, '-vvs', '-x', '--pdb'])
+        data = np.zeros((100, 2, 2))
+        with pytest.raises(ValueError):
+            sm.tsa.lagmat2ds(data, 5)

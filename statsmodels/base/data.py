@@ -176,7 +176,6 @@ class ModelData(object):
                 self.k_constant = int(rank_orig == rank_augm)
                 self.const_idx = None
 
-
     @classmethod
     def _drop_nans(cls, x, nan_mask):
         return x[nan_mask]
@@ -476,7 +475,7 @@ class PandasData(ModelData):
 
     @classmethod
     def _drop_nans(cls, x, nan_mask):
-        if hasattr(x, 'ix'):
+        if isinstance(x, (Series, DataFrame)):
             return x.loc[nan_mask]
         else:  # extra arguments could be plain ndarrays
             return super(PandasData, cls)._drop_nans(x, nan_mask)
@@ -568,6 +567,7 @@ class PandasData(ModelData):
             return Series(squeezed, name=self.ynames)
         else:
             return DataFrame(result, columns=self.ynames)
+
 
 def _make_endog_names(endog):
     if endog.ndim == 1 or endog.shape[1] == 1:

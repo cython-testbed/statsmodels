@@ -14,23 +14,13 @@ try:
 except ImportError:
     import pandas.util.testing as pdt
 
-try:
-    import matplotlib.pyplot as plt
-    have_matplotlib = True
-    plt.switch_backend('Agg')
-except:
-    have_matplotlib = False
-
 import pytest
 
 from statsmodels.regression.linear_model import OLS
-from statsmodels.discrete.discrete_model import Logit
 from statsmodels.genmod.generalized_linear_model import GLM
 from statsmodels.genmod import families
 
-import statsmodels.stats.outliers_influence as oi
-from statsmodels.stats.outliers_influence import (GLMInfluence,
-                                                  MLEInfluence)
+from statsmodels.stats.outliers_influence import MLEInfluence
 
 cur_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -75,7 +65,7 @@ class InfluenceCompareExact(object):
                         rtol=1e-12)
 
         assert_allclose(infl0.resid_studentized,
-                        infl1.resid_studentized, rtol=1e-12)
+                        infl1.resid_studentized, rtol=1e-12, atol=1e-7)
 
         cd_rtol = getattr(self, 'cd_rtol', 1e-7)
         assert_allclose(infl0.cooks_distance[0], infl1.cooks_distance[0],
@@ -86,7 +76,7 @@ class InfluenceCompareExact(object):
         assert_allclose(infl0.d_fittedvalues_scaled,
                         infl1.d_fittedvalues_scaled, rtol=5e-9)
 
-    @pytest.mark.skipif(not have_matplotlib, reason='matplotlib not available')
+    @pytest.mark.matplotlib
     def test_plots(self, close_figures):
         # SMOKE tests for plots
         infl1 = self.infl1
@@ -233,7 +223,7 @@ class TestInfluenceGaussianGLMOLS(InfluenceCompareExact):
         assert_allclose(infl0.hat_matrix_diag, infl1.hat_matrix_diag,
                         rtol=1e-12)
         assert_allclose(infl0.resid_studentized,
-                        infl1.resid_studentized, rtol=1e-12)
+                        infl1.resid_studentized, rtol=1e-12, atol=1e-7)
         assert_allclose(infl0.cooks_distance, infl1.cooks_distance, rtol=1e-7)
         assert_allclose(infl0.dfbetas, infl1.dfbetas, rtol=0.1) # changed
         # OLSInfluence only has looo dfbeta/d_params

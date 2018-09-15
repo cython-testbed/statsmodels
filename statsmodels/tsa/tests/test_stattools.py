@@ -1,3 +1,5 @@
+from statsmodels.compat.python import lrange, PY3
+
 import os
 import warnings
 
@@ -8,15 +10,15 @@ from numpy.testing import (assert_almost_equal, assert_equal, assert_raises,
                            assert_, assert_allclose)
 from pandas import Series, DatetimeIndex, DataFrame
 
-from statsmodels.compat.numpy import recarray_select
-from statsmodels.compat.python import lrange
 from statsmodels.datasets import macrodata, sunspots
 from statsmodels.tools.sm_exceptions import (CollinearityWarning,
                                              MissingDataError)
 from statsmodels.tsa.stattools import (adfuller, acf, pacf_yw,
                                        pacf, grangercausalitytests,
                                        coint, acovf, kpss,
-                                       arma_order_select_ic, levinson_durbin)
+                                       arma_order_select_ic, levinson_durbin,
+                                       levinson_durbin_pacf,
+                                       pacf_burg)
 
 
 DECIMAL_8 = 8
@@ -26,6 +28,12 @@ DECIMAL_4 = 4
 DECIMAL_3 = 3
 DECIMAL_2 = 2
 DECIMAL_1 = 1
+
+
+@pytest.fixture('module')
+def acovf_data():
+    rnd = np.random.RandomState(12345)
+    return rnd.randn(250)
 
 
 class CheckADF(object):
@@ -158,7 +166,7 @@ class TestACF(CheckCorrGram):
         cls.acf = cls.results['acvar']
         #cls.acf = np.concatenate(([1.], cls.acf))
         cls.qstat = cls.results['Q1']
-        cls.res1 = acf(cls.x, nlags=40, qstat=True, alpha=.05)
+        cls.res1 = acf(cls.x, nlags=40, qstat=True, alpha=.05, fft=False)
         cls.confint_res = cls.results[['acvar_lb','acvar_ub']].values
 
     def test_acf(self):
@@ -201,17 +209,18 @@ class TestACFMissing(CheckCorrGram):
         cls.acf = cls.results['acvar'] # drop and conservative
         cls.qstat = cls.results['Q1']
         cls.res_drop = acf(cls.x, nlags=40, qstat=True, alpha=.05,
-                            missing='drop')
+                           missing='drop', fft=False)
         cls.res_conservative = acf(cls.x, nlags=40, qstat=True, alpha=.05,
-                                    missing='conservative')
-        cls.acf_none = np.empty(40) * np.nan # lags 1 to 40 inclusive
+                                   fft=False, missing='conservative')
+        cls.acf_none = np.empty(40) * np.nan  # lags 1 to 40 inclusive
         cls.qstat_none = np.empty(40) * np.nan
         cls.res_none = acf(cls.x, nlags=40, qstat=True, alpha=.05,
-                        missing='none')
+                           missing='none', fft=False)
 
     def test_raise(self):
-        assert_raises(MissingDataError, acf, self.x, nlags=40,
-                      qstat=True, alpha=.05, missing='raise')
+        with pytest.raises(MissingDataError):
+            acf(self.x, nlags=40, qstat=True, fft=False, alpha=.05,
+                missing='raise')
 
     def test_acf_none(self):
         assert_almost_equal(self.res_none[0][1:41], self.acf_none, DECIMAL_8)
@@ -377,9 +386,8 @@ def test_coint_identical_series():
     np.random.seed(123)
     y = scale_e * np.random.randn(nobs)
     warnings.simplefilter('always', CollinearityWarning)
-    with warnings.catch_warnings(record=True) as w:
+    with pytest.warns(CollinearityWarning):
         c = coint(y, y, trend="c", maxlag=0, autolag=None)
-    assert_equal(len(w), 1)
     assert_equal(c[1], 0.0)
     assert_(np.isneginf(c[0]))
 
@@ -489,17 +497,18 @@ class TestKPSS(SetupKPSS):
 
 def test_pandasacovf():
     s = Series(lrange(1, 11))
-    assert_almost_equal(acovf(s), acovf(s.values))
+    assert_almost_equal(acovf(s, fft=False), acovf(s.values, fft=False))
 
 
 def test_acovf2d():
     dta = sunspots.load_pandas().data
     dta.index = DatetimeIndex(start='1700', end='2009', freq='A')[:309]
     del dta["YEAR"]
-    res = acovf(dta)
-    assert_equal(res, acovf(dta.values))
-    X = np.random.random((10,2))
-    assert_raises(ValueError, acovf, X)
+    res = acovf(dta, fft=False)
+    assert_equal(res, acovf(dta.values, fft=False))
+    x = np.random.random((10, 2))
+    with pytest.raises(ValueError):
+        acovf(x, fft=False)
 
 
 def test_acovf_fft_vs_convolution():
@@ -602,6 +611,105 @@ def test_levinson_durbin_acov():
     assert_allclose(pacf, np.array([1, rho] + [0] * (m - 1)), atol=1e-8)
 
 
-if __name__=="__main__":
-    import pytest
-    pytest.main([__file__, '-vvs', '-x', '--pdb'])
+
+@pytest.mark.parametrize("missing", ['conservative', 'drop', 'raise', 'none'])
+@pytest.mark.parametrize("fft", [False, True])
+@pytest.mark.parametrize("demean", [True, False])
+@pytest.mark.parametrize("unbiased", [True, False])
+def test_acovf_nlags(acovf_data, unbiased, demean, fft, missing):
+    full = acovf(acovf_data, unbiased=unbiased, demean=demean, fft=fft,
+                 missing=missing)
+    limited = acovf(acovf_data, unbiased=unbiased, demean=demean, fft=fft,
+                    missing=missing, nlag=10)
+    assert_allclose(full[:11], limited)
+
+
+@pytest.mark.parametrize("missing", ['conservative', 'drop'])
+@pytest.mark.parametrize("fft", [False, True])
+@pytest.mark.parametrize("demean", [True, False])
+@pytest.mark.parametrize("unbiased", [True, False])
+def test_acovf_nlags_missing(acovf_data, unbiased, demean, fft, missing):
+    acovf_data = acovf_data.copy()
+    acovf_data[1:3] = np.nan
+    full = acovf(acovf_data, unbiased=unbiased, demean=demean, fft=fft,
+                 missing=missing)
+    limited = acovf(acovf_data, unbiased=unbiased, demean=demean, fft=fft,
+                    missing=missing, nlag=10)
+    assert_allclose(full[:11], limited)
+
+
+def test_acovf_error(acovf_data):
+    with pytest.raises(ValueError):
+        acovf(acovf_data, nlag=250, fft=False)
+
+
+def test_acovf_warns(acovf_data):
+    with pytest.warns(FutureWarning):
+        acovf(acovf_data)
+
+
+def test_acf_warns(acovf_data):
+    with pytest.warns(FutureWarning):
+        acf(acovf_data, nlags=40)
+
+
+def test_pacf2acf_ar():
+    pacf = np.zeros(10)
+    pacf[0] = 1
+    pacf[1] = 0.9
+    ar, acf = levinson_durbin_pacf(pacf)
+    assert_allclose(acf, 0.9 ** np.arange(10.))
+    assert_allclose(ar, pacf[1:], atol=1e-8)
+
+    ar, acf = levinson_durbin_pacf(pacf, nlags=5)
+    assert_allclose(acf, 0.9 ** np.arange(6.))
+    assert_allclose(ar, pacf[1:6], atol=1e-8)
+
+
+def test_pacf2acf_levinson_durbin():
+    pacf = -0.9 ** np.arange(11.)
+    pacf[0] = 1
+    ar, acf = levinson_durbin_pacf(pacf)
+    _, ar_ld, pacf_ld, _, _ = levinson_durbin(acf, 10, isacov=True)
+    assert_allclose(ar, ar_ld, atol=1e-8)
+    assert_allclose(pacf, pacf_ld, atol=1e-8)
+
+    # From R, FitAR, PacfToAR
+    ar_from_r = [-4.1609, -9.2549, -14.4826, -17.6505, -17.5012, -14.2969, -9.5020, -4.9184,
+                 -1.7911, -0.3486]
+    assert_allclose(ar, ar_from_r, atol=1e-4)
+
+
+def test_pacf2acf_errors():
+    pacf = -0.9 ** np.arange(11.)
+    pacf[0] = 1
+    with pytest.raises(ValueError):
+        levinson_durbin_pacf(pacf, nlags=20)
+    with pytest.raises(ValueError):
+        levinson_durbin_pacf(pacf[:1])
+    with pytest.raises(ValueError):
+        levinson_durbin_pacf(np.zeros(10))
+    with pytest.raises(ValueError):
+        levinson_durbin_pacf(np.zeros((10, 2)))
+
+
+def test_pacf_burg():
+    rnd = np.random.RandomState(12345)
+    e = rnd.randn(10001)
+    y = e[1:] + 0.5 * e[:-1]
+    pacf, sigma2 = pacf_burg(y, 10)
+    yw_pacf = pacf_yw(y, 10)
+    assert_allclose(pacf, yw_pacf, atol=5e-4)
+    # Internal consistency check between pacf and sigma2
+    ye = y - y.mean()
+    s2y = ye.dot(ye) / 10000
+    pacf[0] = 0
+    sigma2_direct = s2y * np.cumprod(1 - pacf ** 2)
+    assert_allclose(sigma2, sigma2_direct, atol=1e-3)
+
+
+def test_pacf_burg_error():
+    with pytest.raises(ValueError):
+        pacf_burg(np.empty((20,2)), 10)
+    with pytest.raises(ValueError):
+        pacf_burg(np.empty(100), 101)

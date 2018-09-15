@@ -165,7 +165,7 @@ class Model(object):
                         cols.remove(col)
                     except ValueError:
                         pass  # OK if not present
-                design_info = design_info.subset(cols).design_info
+                design_info = design_info.subset(cols)
 
         kwargs.update({'missing_idx': missing_idx,
                        'missing': missing,
@@ -761,7 +761,7 @@ class GenericLikelihoodModel(LikelihoodModel):
     # this is redundant and not used when subclassing
     def initialize(self):
         if not self.score:  # right now score is not optional
-            self.score = approx_fprime
+            self.score = lambda x: approx_fprime(x, self.loglike)
             if not self.hessian:
                 pass
         else:   # can use approx_hess_p if we have a gradient

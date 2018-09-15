@@ -189,7 +189,7 @@ class TestPHReg(object):
         result1 = model1.fit()
 
         from patsy import dmatrix
-        dfp = dmatrix(model1.data.design_info.builder, df)
+        dfp = dmatrix(model1.data.design_info, df)
 
         pr1 = result1.predict()
         pr2 = result1.predict(exog=df)
@@ -414,8 +414,3 @@ strata_f = (False, True)
                          list(itertools.product(fnames, ties, entry_f, strata_f)))
 def test_r(fname, ties, entry_f, strata_f):
     TestPHReg.do1(fname, ties, entry_f, strata_f)
-
-
-if __name__ == "__main__":
-    import pytest
-    pytest.main([__file__, '-vvs', '-x', '--pdb'])

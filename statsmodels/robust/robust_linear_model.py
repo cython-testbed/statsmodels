@@ -13,7 +13,6 @@ PJ Huber.  1973,  'The 1972 Wald Memorial Lectures: Robust Regression:
 R Venables, B Ripley. 'Modern Applied Statistics in S'  Springer, New York,
     2002.
 """
-from statsmodels.compat.python import string_types
 import numpy as np
 import scipy.stats as stats
 
@@ -108,9 +107,9 @@ class RLM(base.LikelihoodModel):
     """ % {'params' : base._model_params_doc,
             'extra_params' : base._missing_param_doc}
 
-    def __init__(self, endog, exog, M=norms.HuberT(), missing='none',
+    def __init__(self, endog, exog, M=None, missing='none',
                  **kwargs):
-        self.M = M
+        self.M = M if M is not None else norms.HuberT()
         super(base.LikelihoodModel, self).__init__(endog, exog,
                 missing=missing, **kwargs)
         self._initialize()
@@ -472,8 +471,6 @@ class RLMResults(base.LikelihoodModelResults):
         """
         This is for testing the new summary setup
         """
-        from statsmodels.iolib.summary import (summary_top,
-                                            summary_params, summary_return)
 
 ##        left = [(i, None) for i in (
 ##                        'Dependent Variable:',

@@ -8,6 +8,8 @@ if [ "$LINT" == true ]; then
     echo "Linting all files with limited rules"
     flake8 statsmodels
     if [ $? -ne "0" ]; then
+        echo "Changed files failed linting using the required set of rules."
+        echo "Additions and changes must conform to Python code style rules."
         RET=1
     fi
 
@@ -15,15 +17,32 @@ if [ "$LINT" == true ]; then
     # pass _all_ flake8 checks
     echo "Linting known clean files with strict rules"
     flake8 --isolated \
-        statsmodels/info.py \
         statsmodels/resampling/ \
         statsmodels/interface/ \
+        statsmodels/graphics/functional.py \
+        statsmodels/graphics/tests/test_functional.py \
+        statsmodels/examples/tests/ \
+        statsmodels/iolib/smpickle.py \
+        statsmodels/iolib/tests/test_pickle.py \
+        statsmodels/graphics/tsaplots.py \
         statsmodels/tsa/regime_switching \
         statsmodels/regression/mixed_linear_model.py \
         statsmodels/duration/__init__.py \
         statsmodels/regression/recursive_ls.py \
-        conftest.py
+        statsmodels/tools/linalg.py \
+        statsmodels/tools/tests/test_linalg.py \
+        statsmodels/tools/decorators.py \
+        statsmodels/tools/tests/test_decorators.py \
+        statsmodels/tsa/base/tests/test_datetools.py \
+        statsmodels/tsa/vector_ar/dynamic.py \
+        statsmodels/tsa/vector_ar/hypothesis_test_results.py \
+        statsmodels/tsa/statespace/*.py \
+        statsmodels/tsa/statespace/tests/results/ \
+        statsmodels/tsa/statespace/tests/test_var.py \
+        statsmodels/conftest.py \
+        setup.py
     if [ $? -ne "0" ]; then
+        echo "Previously passing files failed linting."
         RET=1
     fi
 
@@ -33,6 +52,7 @@ if [ "$LINT" == true ]; then
         echo "Linting newly added files with strict rules"
         flake8 --isolated $(eval echo $NEW_FILES)
         if [ $? -ne "0" ]; then
+            echo "New files failed linting."
             RET=1
         fi
     fi

@@ -9,7 +9,9 @@ from statsmodels.compat.python import (iteritems, range, lrange, string_types,
                                        lzip, zip, long)
 from statsmodels.compat.scipy import _next_regular
 from statsmodels.regression.linear_model import OLS, yule_walker
-from statsmodels.tools.sm_exceptions import InterpolationWarning, MissingDataError
+from statsmodels.tools.sm_exceptions import (InterpolationWarning,
+                                             MissingDataError,
+                                             CollinearityWarning)
 from statsmodels.tools.tools import add_constant, Bunch
 from statsmodels.tsa._bds import bds
 from statsmodels.tsa.adfvalues import mackinnonp, mackinnoncrit
@@ -293,7 +295,7 @@ def adfuller(x, maxlag=None, regression="c", autolag='AIC',
             return adfstat, pvalue, usedlag, nobs, critvalues, icbest
 
 
-def acovf(x, unbiased=False, demean=True, fft=False, missing='none'):
+def acovf(x, unbiased=False, demean=True, fft=None, missing='none', nlag=None):
     """
     Autocovariance for 1D
 
@@ -309,8 +311,14 @@ def acovf(x, unbiased=False, demean=True, fft=False, missing='none'):
         If True, use FFT convolution.  This method should be preferred
         for long time series.
     missing : str
-        A string in ['none', 'raise', 'conservative', 'drop'] specifying how the NaNs
-        are to be treated.
+        A string in ['none', 'raise', 'conservative', 'drop'] specifying how
+        the NaNs are to be treated.
+    nlag : {int, None}
+        Limit the number of autocovariances returned.  Size of returned
+        array is nlag + 1.  Setting nlag when fft is False uses a simple,
+        direct estimator of the autocovariances that only computes the first
+        nlag + 1 values. This can be much faster when the time series is long
+        and only a small number of autocovariances are needed.
 
     Returns
     -------
@@ -323,6 +331,14 @@ def acovf(x, unbiased=False, demean=True, fft=False, missing='none'):
            and amplitude modulation. Sankhya: The Indian Journal of
            Statistics, Series A, pp.383-392.
     """
+    if fft is None:
+        import warnings
+        msg = 'fft=True will become the default in a future version of ' \
+              'statsmodels. To suppress this warning, explicitly set ' \
+              'fft=False.'
+        warnings.warn(msg, FutureWarning)
+        fft = False
+
     x = np.squeeze(np.asarray(x))
     if x.ndim > 1:
         raise ValueError("x must be 1d. Got %d dims." % x.ndim)
@@ -337,17 +353,19 @@ def acovf(x, unbiased=False, demean=True, fft=False, missing='none'):
     if deal_with_masked:
         if missing == 'raise':
             raise MissingDataError("NaNs were encountered in the data")
-        notmask_bool = ~np.isnan(x) #bool
+        notmask_bool = ~np.isnan(x)  # bool
         if missing == 'conservative':
+            # Must copy for thread safety
+            x = x.copy()
             x[~notmask_bool] = 0
-        else: #'drop'
-            x = x[notmask_bool] #copies non-missing
-        notmask_int = notmask_bool.astype(int) #int
+        else:  # 'drop'
+            x = x[notmask_bool]  # copies non-missing
+        notmask_int = notmask_bool.astype(int)  # int
 
     if demean and deal_with_masked:
         # whether 'drop' or 'conservative':
-        xo = x - x.sum()/notmask_int.sum()
-        if missing=='conservative':
+        xo = x - x.sum() / notmask_int.sum()
+        if missing == 'conservative':
             xo[~notmask_bool] = 0
     elif demean:
         xo = x - x.mean()
@@ -355,14 +373,43 @@ def acovf(x, unbiased=False, demean=True, fft=False, missing='none'):
         xo = x
 
     n = len(x)
-    if unbiased and deal_with_masked and missing=='conservative':
+    lag_len = nlag
+    if nlag is None:
+        lag_len = n - 1
+    elif nlag > n - 1:
+        raise ValueError('nlag must be smaller than nobs - 1')
+
+    if not fft and nlag is not None:
+        acov = np.empty(lag_len + 1)
+        acov[0] = xo.dot(xo)
+        for i in range(lag_len):
+            acov[i + 1] = xo[i + 1:].dot(xo[:-(i + 1)])
+        if not deal_with_masked or missing == 'drop':
+            if unbiased:
+                acov /= (n - np.arange(lag_len + 1))
+            else:
+                acov /= n
+        else:
+            if unbiased:
+                divisor = np.empty(lag_len + 1, dtype=np.int64)
+                divisor[0] = notmask_int.sum()
+                for i in range(lag_len):
+                    divisor[i + 1] = notmask_int[i + 1:].dot(notmask_int[:-(i + 1)])
+                divisor[divisor == 0] = 1
+                acov /= divisor
+            else:  # biased, missing data but npt 'drop'
+                acov /= notmask_int.sum()
+        return acov
+
+    if unbiased and deal_with_masked and missing == 'conservative':
         d = np.correlate(notmask_int, notmask_int, 'full')
+        d[d == 0] = 1
     elif unbiased:
         xi = np.arange(1, n + 1)
         d = np.hstack((xi, xi[:-1][::-1]))
-    elif deal_with_masked: #biased and NaNs given and ('drop' or 'conservative')
-        d = notmask_int.sum() * np.ones(2*n-1)
-    else: #biased and no NaNs or missing=='none'
+    elif deal_with_masked:  # biased and NaNs given and ('drop' or 'conservative')
+        d = notmask_int.sum() * np.ones(2 * n - 1)
+    else:  # biased and no NaNs or missing=='none'
         d = n * np.ones(2 * n - 1)
 
     if fft:
@@ -372,12 +419,11 @@ def acovf(x, unbiased=False, demean=True, fft=False, missing='none'):
         acov = np.fft.ifft(Frf * np.conjugate(Frf))[:nobs] / d[nobs - 1:]
         acov = acov.real
     else:
-        acov = (np.correlate(xo, xo, 'full') / d)[n - 1:]
+        acov = np.correlate(xo, xo, 'full')[n - 1:] / d[n - 1:]
 
-    if deal_with_masked and missing=='conservative':
-        # restore data for the user
-        x[~notmask_bool] = np.nan
-
+    if nlag is not None:
+        # Copy to allow gc of full array rather than view
+        return acov[:lag_len + 1].copy()
     return acov
 
 
@@ -413,7 +459,7 @@ def q_stat(x, nobs, type="ljungbox"):
 #NOTE: Changed unbiased to False
 #see for example
 # http://www.itl.nist.gov/div898/handbook/eda/section3/autocopl.htm
-def acf(x, unbiased=False, nlags=40, qstat=False, fft=False, alpha=None,
+def acf(x, unbiased=False, nlags=40, qstat=False, fft=None, alpha=None,
         missing='none'):
     """
     Autocorrelation function for 1d arrays.
@@ -456,11 +502,14 @@ def acf(x, unbiased=False, nlags=40, qstat=False, fft=False, alpha=None,
     -----
     The acf at lag 0 (ie., 1) is returned.
 
-    This is based np.correlate which does full convolution. For very long time
-    series it is recommended to use fft convolution instead.
+    For very long time series it is recommended to use fft convolution instead.
+    When fft is False uses a simple, direct estimator of the autocovariances
+    that only computes the first nlag + 1 values. This can be much faster when
+    the time series is long and only a small number of autocovariances are
+    needed.
 
     If unbiased is true, the denominator for the autocovariance is adjusted
-    but the autocorrelation is not an unbiased estimtor.
+    but the autocorrelation is not an unbiased estimator.
 
     References
     ----------
@@ -469,6 +518,14 @@ def acf(x, unbiased=False, nlags=40, qstat=False, fft=False, alpha=None,
        Statistics, Series A, pp.383-392.
 
     """
+    if fft is None:
+        import warnings
+        msg = 'fft=True will become the default in a future version of ' \
+              'statsmodels. To suppress this warning, explicitly set ' \
+              'fft=False.'
+        warnings.warn(msg, FutureWarning)
+        fft = False
+
     nobs = len(x)  # should this shrink for missing='drop' and NaNs in x?
     avf = acovf(x, unbiased=unbiased, demean=True, fft=fft, missing=missing)
     acf = avf[:nlags + 1] / avf[0]
@@ -517,6 +574,67 @@ def pacf_yw(x, nlags=40, method='unbiased'):
     for k in range(1, nlags + 1):
         pacf.append(yule_walker(x, k, method=method)[0][-1])
     return np.array(pacf)
+
+
+def pacf_burg(x, nlags=None, demean=True):
+    """
+    Burg's partial autocorrelation estimator
+
+    Parameters
+    ----------
+    x : array-like
+        Observations of time series for which pacf is calculated
+    nlags : int, optional
+        Number of lags to compute the partial autocorrelations.  If omitted,
+        uses the smaller of 10(log10(nobs)) or nobs - 1
+    demean : bool, optional
+
+    Returns
+    -------
+    pacf : ndarray
+        Partial autocorrelations for lags 0, 1, ..., nlag
+    sigma2 : ndarray
+        Residual variance estimates where the value in position m is the
+        residual variance in an AR model that includes m lags
+
+    See also
+    --------
+    statsmodels.tsa.stattools.pacf
+
+    References
+    ----------
+    Brockwell, P.J. and Davis, R.A., 2016. Introduction to time series and
+        forecasting. Springer.
+    """
+    x = np.squeeze(np.asarray(x))
+    if x.ndim != 1:
+        raise ValueError('x must be 1-d or squeezable to 1-d.')
+    if demean:
+        x = x - x.mean()
+    nobs = x.shape[0]
+    p = nlags if nlags is not None else min(int(10 * np.log10(nobs)), nobs - 1)
+    if p > nobs - 1:
+        raise ValueError('nlags must be smaller than nobs - 1')
+    d = np.zeros(p + 1)
+    d[0] = 2 * x.dot(x)
+    pacf = np.zeros(p + 1)
+    u = x[::-1].copy()
+    v = x[::-1].copy()
+    d[1] = u[:-1].dot(u[:-1]) + v[1:].dot(v[1:])
+    pacf[1] = 2 / d[1] * v[1:].dot(u[:-1])
+    last_u = np.empty_like(u)
+    last_v = np.empty_like(v)
+    for i in range(1, p):
+        last_u[:] = u
+        last_v[:] = v
+        u[1:] = last_u[:-1] - pacf[i] * last_v[1:]
+        v[1:] = last_v[1:] - pacf[i] * last_u[:-1]
+        d[i + 1] = (1 - pacf[i] ** 2) * d[i] - v[i] ** 2 - u[-1] ** 2
+        pacf[i + 1] = 2 / d[i + 1] * v[i + 1:].dot(u[i:-1])
+    sigma2 = (1 - pacf ** 2) * d / (2. * (nobs - np.arange(0, p + 1)))
+    pacf[0] = 1  # Insert the 0 lag partial autocorrel
+
+    return pacf, sigma2
 
 
 #NOTE: this is incorrect.
@@ -600,13 +718,13 @@ def pacf(x, nlags=40, method='ywunbiased', alpha=None):
     elif method in ['ywm', 'ywmle', 'yw_mle']:
         ret = pacf_yw(x, nlags=nlags, method='mle')
     elif method in ['ld', 'ldu', 'ldunbiase', 'ld_unbiased']:
-        acv = acovf(x, unbiased=True)
+        acv = acovf(x, unbiased=True, fft=False)
         ld_ = levinson_durbin(acv, nlags=nlags, isacov=True)
         #print 'ld', ld_
         ret = ld_[2]
     # inconsistent naming with ywmle
     elif method in ['ldb', 'ldbiased', 'ld_biased']:
-        acv = acovf(x, unbiased=False)
+        acv = acovf(x, unbiased=False, fft=False)
         ld_ = levinson_durbin(acv, nlags=nlags, isacov=True)
         ret = ld_[2]
     else:
@@ -759,7 +877,7 @@ def levinson_durbin(s, nlags=10, isacov=False):
     if isacov:
         sxx_m = s
     else:
-        sxx_m = acovf(s)[:order + 1]  # not tested
+        sxx_m = acovf(s, fft=False)[:order + 1]  # not tested
 
     phi = np.zeros((order + 1, order + 1), 'd')
     sig = np.zeros(order + 1)
@@ -778,6 +896,58 @@ def levinson_durbin(s, nlags=10, isacov=False):
     pacf_ = np.diag(phi).copy()
     pacf_[0] = 1.
     return sigma_v, arcoefs, pacf_, sig, phi  # return everything
+
+
+def levinson_durbin_pacf(pacf, nlags=None):
+    """
+    Levinson-Durbin algorithm that returns the acf and ar coefficients
+
+    Parameters
+    ----------
+    pacf : array-like
+        Partial autocorrelation array for lags 0, 1, ... p
+    nlags : int, optional
+        Number of lags in the AR model.  If omitted, returns coefficients from
+        an AR(p) and the first p autocorrelations
+
+    Returns
+    -------
+    arcoefs : ndarray
+        AR coefficients computed from the partial autocorrelations
+    acf : ndarray
+        acf computed from the partial autocorrelations. Array returned contains
+        the autocorelations corresponding to lags 0, 1, ..., p
+
+    References
+    ----------
+    Brockwell, P.J. and Davis, R.A., 2016. Introduction to time series and
+        forecasting. Springer.
+    """
+    pacf = np.squeeze(np.asarray(pacf))
+    if pacf.ndim != 1:
+        raise ValueError('pacf must be 1-d or squeezable to 1-d.')
+    if pacf[0] != 1:
+        raise ValueError('The first entry of the pacf corresponds to lags 0 '
+                         'and so must be 1.')
+    pacf = pacf[1:]
+    n = pacf.shape[0]
+    if nlags is not None:
+        if nlags > n:
+            raise ValueError('Must provide at least as many values from the '
+                             'pacf as the number of lags.')
+        pacf = pacf[:nlags]
+        n = pacf.shape[0]
+
+    acf = np.zeros(n + 1)
+    acf[1] = pacf[0]
+    nu = np.cumprod(1 - pacf ** 2)
+    arcoefs = pacf.copy()
+    for i in range(1, n):
+        prev = arcoefs[:-(n - i)].copy()
+        arcoefs[:-(n - i)] = prev - arcoefs[i] * prev[::-1]
+        acf[i + 1] = arcoefs[i] * nu[i-1] + prev.dot(acf[1:-(n - i)][::-1])
+    acf[0] = 1
+    return arcoefs, acf
 
 
 def grangercausalitytests(x, maxlag, addconst=True, verbose=True):
@@ -1028,7 +1198,8 @@ def coint(y0, y1, trend='c', method='aeg', maxlag=None, autolag='aic',
     else:
         import warnings
         warnings.warn("y0 and y1 are (almost) perfectly colinear."
-                      "Cointegration test is not reliable in this case.")
+                      "Cointegration test is not reliable in this case.",
+                      CollinearityWarning)
         # Edge case where series are too similar
         res_adf = (-np.inf,)
 
