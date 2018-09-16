@@ -30,6 +30,7 @@ if [ "$LINT" == true ]; then
         statsmodels/duration/__init__.py \
         statsmodels/regression/recursive_ls.py \
         statsmodels/tools/linalg.py \
+        statsmodels/tools/web.py \
         statsmodels/tools/tests/test_linalg.py \
         statsmodels/tools/decorators.py \
         statsmodels/tools/tests/test_decorators.py \
@@ -47,7 +48,10 @@ if [ "$LINT" == true ]; then
     fi
 
     # Tests any new python files
-    NEW_FILES=$(git diff master --name-status -u -- "*.py" | grep ^A | cut -c 3- | paste -sd " " -)
+    git fetch --unshallow --quiet
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    git fetch origin --quiet
+    NEW_FILES=$(git diff origin/master --name-status -u -- "*.py" | grep ^A | cut -c 3- | paste -sd " " -)
     if [ -n "$NEW_FILES" ]; then
         echo "Linting newly added files with strict rules"
         flake8 --isolated $(eval echo $NEW_FILES)
